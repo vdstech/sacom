@@ -14,13 +14,25 @@ r.post('/', bootStrapGuard, createRoleValidator, handleValidation, async (req, r
         })
     }
 
-    const role = Role.create({name, permissions})
+    const role = await Role.create({name, permissions})
     return res.status(201).json(role)
 })
 
 r.get('/', bootStrapGuard, async(req, res) =>{
     const roles = await Role.find().sort({name: 1}).lean()
     return res.json(roles)
+})
+
+r.delete('/', bootStrapGuard, async(req, res) => {
+    const {id} = req.body
+    const role = await Role.findByIdAndDelete(id)
+    if (!role) {
+         return res.status(409).json({
+            error: 'Role does not exists'
+        })
+    }
+
+    return res.json(role)
 })
 
 export default r
