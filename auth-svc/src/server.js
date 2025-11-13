@@ -7,6 +7,7 @@ import { connectMongo } from './db.js'
 import {getTlsOptions} from './tls.js'
 import https from 'https'
 import http from 'http'
+import rolesRouter from '../src/routes/role.js'
 
 const app = express()
 
@@ -24,10 +25,13 @@ app.use(helmet.hsts({
 
 const logger = pino({base: {service: 'auth-svc'}})
 app.use(pinoHttp({logger}))
+app.use(express.json({limit: '200kb'}))
+app.use('/api/admin/roles', rolesRouter)
 
 app.get('/health', (req, res) => {
     res.json({ok: true, service: 'auth-svc', time: new Date().toISOString()})
 })
+
 
 ;(async () => {
     try {
@@ -66,3 +70,5 @@ app.get('/health', (req, res) => {
         process.exit(1)
     }
 })()
+
+//mongod --dbpath ~/spaces/mongo
