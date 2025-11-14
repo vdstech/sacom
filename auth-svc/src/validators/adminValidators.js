@@ -9,10 +9,10 @@ export const createUserValidation = [
     .trim()
     .isLength({min: 2, max: 80}).withMessage('Name must be within 2-80 characters'),
 
-    body('role').exists({checkFalsy: true}).withMessage('Role is required')
-    .isString().trim()
+    body('roleName').isString().exists({checkFalsy: true}).withMessage('Role is required')
+    .trim()
     .custom(async (roleName) => {
-        const role = Role.findOne({name: roleName}).lean()
+        const role = await Role.findOne({name: roleName}).lean()
         if (!role)
           throw new Error('Role does not exist')
         return true

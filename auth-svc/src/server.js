@@ -8,6 +8,7 @@ import {getTlsOptions} from './tls.js'
 import https from 'https'
 import http from 'http'
 import rolesRouter from '../src/routes/role.js'
+import adminUsers from '../src/routes/admin.js'
 
 const app = express()
 
@@ -27,6 +28,7 @@ const logger = pino({base: {service: 'auth-svc'}})
 app.use(pinoHttp({logger}))
 app.use(express.json({limit: '200kb'}))
 app.use('/api/admin/roles', rolesRouter)
+app.use('/api/admin/users', adminUsers)
 
 app.get('/health', (req, res) => {
     res.json({ok: true, service: 'auth-svc', time: new Date().toISOString()})

@@ -5,7 +5,7 @@ export function handleValidation(req, res, next) {
     if (result.isEmpty())
         return next()
 
-    const errors = result.errors().map((e) => ({
+    const errors = result.array().map((e) => ({
         field: e.type === 'field' ? e.path : e.type,
         msg: e.msg
     }))
