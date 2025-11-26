@@ -1,5 +1,5 @@
 import {Router} from 'express'
-import {Role} from '../model/role.js'
+import Role from '../model/role.js'
 import { bootStrapGuard } from '../middleware/bootstrapGuard.js'
 import { handleValidation } from '../middleware/handleValidation.js'
 import { createRoleValidator } from '../validators/adminValidators.js'
