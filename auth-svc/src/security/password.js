@@ -5,5 +5,6 @@ export async function hashPassword(plain) {
 }
 
 export async function verify(plain, hash) {
+    if (!hash) return false
     return argon2.verify(hash, plain)
 }

@@ -5,15 +5,17 @@ const permissionSchema = mongoose.Schema({
         type: String,
         required: true,
         unique: true,
-        trim: true,
-        required: true
+        trim: true
     },
     description: {
         type: String,
         required: true,
-        trim: true,
-        required: true
-    }
+        trim: true
+    },
+    children: [{
+        type: mongoose.Types.ObjectId,
+        ref: "Permission"
+    }]
 })
 
 export default mongoose.model('Permission', permissionSchema)

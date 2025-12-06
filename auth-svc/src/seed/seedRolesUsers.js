@@ -2,82 +2,113 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 dotenv.config();
 
-import Role from '../model/role.js';
-import User from '../model/user.js';
 import Permission from "../model/permission.js";
-import { hashPassword } from "../security/password.js";
-
-const SUPER_ADMIN_EMAIL = "superadmin@sacom.com";
-const SUPER_ADMIN_PASSWORD = "SuperAdmin1!";
+import Role from "../model/role.js";
+import User from "../model/user.js";
+import {hashPassword} from "../security/password.js"
 
 async function seed() {
-  console.log("Connecting to MongoDB...");
   await mongoose.connect(process.env.MONGO_URI);
-  console.log("Connected");
+  console.log("Connected to MongoDB\n");
 
-  // 1. Create all permissions
-  console.log("Creating permissions...");
+  // ---------------------------------------------------------
+  // 1. PERMISSION HIERARCHY
+  // ---------------------------------------------------------
+  const permissionGroups = {
+    USER_WRITE: ["USER_READ", "USER_CREATE", "USER_UPDATE", "USER_DELETE"],
+    ROLE_WRITE: ["ROLE_READ", "ROLE_CREATE", "ROLE_UPDATE", "ROLE_DELETE"],
+    PERMISSION_WRITE: [
+      "PERMISSION_READ",
+      "PERMISSION_CREATE",
+      "PERMISSION_UPDATE",
+      "PERMISSION_DELETE"
+    ]
+  };
 
-  const permissionCodes = [
-    "PERMISSION_CREATE",
-    "PERMISSION_UPDATE",
-    "PERMISSION_DELETE",
-    "PERMISSION_READ",
-    "ROLE_CREATE",
-    "ROLE_UPDATE",
-    "ROLE_DELETE",
-    "ROLE_READ",
-    "USER_CREATE",
-    "USER_UPDATE",
-    "USER_DELETE",
-    "USER_READ"
-  ];
+  // Leaf permissions
+  const leafCodes = new Set();
+  Object.values(permissionGroups).forEach(children =>
+    children.forEach(child => leafCodes.add(child))
+  );
 
-  const permissionDocs = [];
-  for (const code of permissionCodes) {
+  // Group permissions
+  const groupCodes = Object.keys(permissionGroups);
+
+  const permissionDocs = {};
+
+  // ---------------------------------------------------------
+  // 2. Seed all leaf permissions
+  // ---------------------------------------------------------
+  for (const code of leafCodes) {
+    const perm = await Permission.findOneAndUpdate(
+      { code },
+      { code, children: [] },
+      { upsert: true, new: true }
+    );
+    permissionDocs[code] = perm;
+  }
+
+  // ---------------------------------------------------------
+  // 3. Seed all group permissions (initially empty children)
+  // ---------------------------------------------------------
+  for (const code of groupCodes) {
     const perm = await Permission.findOneAndUpdate(
       { code },
       { code },
       { upsert: true, new: true }
     );
-    permissionDocs.push(perm);
+    permissionDocs[code] = perm;
   }
 
-  console.log("Initial Permissions ensured");
+  // ---------------------------------------------------------
+  // 4. Attach children to group permissions
+  // ---------------------------------------------------------
+  for (const [group, childrenCodes] of Object.entries(permissionGroups)) {
+    const childIds = childrenCodes.map(code => permissionDocs[code]._id);
 
-  // 2. SUPER_ADMIN Role (full permissions)
-  console.log("Creating SUPER_ADMIN role...");
-  
+    await Permission.findByIdAndUpdate(permissionDocs[group]._id, {
+      children: childIds
+    });
+  }
+
+  console.log("Permission groups updated\n");
+
+  // ---------------------------------------------------------
+  // 5. Create ROLES
+  // ---------------------------------------------------------
+
+  // SUPER_ADMIN gets all group permissions (WRITE permissions)
   const superAdminRole = await Role.findOneAndUpdate(
     { name: "SUPER_ADMIN" },
-    { name: "SUPER_ADMIN", permissions: permissionDocs.map(p => p._id) },
+    {
+      name: "SUPER_ADMIN",
+      permissions: groupCodes.map(code => permissionDocs[code]._id)
+    },
     { upsert: true, new: true }
   );
 
   console.log("SUPER_ADMIN role ready");
 
-  // 4. Create SUPER_ADMIN user
-  console.log("Creating SUPER_ADMIN user");
-
-  const superAdminPasswordHash = await hashPassword(SUPER_ADMIN_PASSWORD);
+  // ---------------------------------------------------------
+  // 6. Create users
+  // ---------------------------------------------------------
+  const superPass = await hashPassword("SuperAdmin@123");
   await User.findOneAndUpdate(
-    { email: SUPER_ADMIN_EMAIL },
+    { email: "superadmin@sa.com" },
     {
       name: "Super Admin",
-      email: SUPER_ADMIN_EMAIL,
-      passwordHash: superAdminPasswordHash,
-      role: superAdminRole._id,
-      disabled: false
+      email: "superadmin@sa.com",
+      password: superPass,
+      passwordHash: superPass,
+      roles: [superAdminRole._id]
     },
     { upsert: true }
   );
 
-  console.log("SUPER_ADMIN user seeded");
-  console.log("Seeding completed successfully");
+  console.log("Users created\n");
+
   mongoose.connection.close();
+  console.log("Seeding complete!");
 }
 
-seed().catch(err => {
-  console.error("ERROR while seeding the Super Admin:", err);
-  mongoose.connection.close();
-});
+seed();

@@ -4,7 +4,7 @@
   "description": "Auth module for sacom",
   "main": "src/server.js",
   "scripts": {
-    "db:reset": "mongosh auth-svc --eval \"db.dropDatabase()\"",
+    "db:reset": "mongosh auth_db --eval \"db.dropDatabase()\"",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed": "node src/seed/seedRolesUsers.js"

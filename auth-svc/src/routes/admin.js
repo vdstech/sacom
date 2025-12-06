@@ -1,14 +1,16 @@
 import {Router} from 'express'
 import Role from '../model/role.js'
 import User from '../model/user.js'
-import {hashPassword, verify} from '../security/password.js'
+import {hashPassword} from '../security/password.js'
 import {createUserValidation} from '../validators/adminValidators.js'
 import {handleValidation} from '../middleware/handleValidation.js'
+import {requireAuth} from '../middleware/requireAuth.js'
 import { bootStrapGuard } from '../middleware/bootstrapGuard.js'
+import {requiresPermission} from '../middleware/requiresPermission.js'
 
 const r = Router()
 
-r.post('/', bootStrapGuard, createUserValidation, handleValidation, async (req, res) => {
+r.post('/', requireAuth, requiresPermission('USER_CREATE'), createUserValidation, handleValidation, async (req, res) => {
     const {email, name, roleName, password} = req.body
 
     console.log("email = ", email)
@@ -43,12 +45,12 @@ r.post('/', bootStrapGuard, createUserValidation, handleValidation, async (req, 
     })
 })
 
-r.get('/', bootStrapGuard, async (req, res) => {
+r.get('/', requireAuth, requiresPermission('USER_READ'), handleValidation, async (req, res) => {
     const users = await User.find().sort({name: 1}).lean()
     return res.json(users)
 })
 
-r.delete('/', bootStrapGuard, async (req, res) => {
+r.delete('/', requireAuth, requiresPermission('USER_DELETE'), handleValidation, async (req, res) => {
     const user = await User.findByIdAndDelete(req.body.id)
     if (!user) {
         res.status(409).json({"status" : "User did not exist"})

@@ -14,7 +14,7 @@ authRouter.post('/login', async (req, res) => {
             return res.status(400).json({ error: 'email and password are required' })
         }
 
-        const user = await User.findOne({ email }).populate('role')
+        const user = await User.findOne({ email }).populate({path: 'roles', populate: {path: "permissions"}})
         if (!user) {
             console.warn('Email is incorrect')
             return res.status(401).json({ error: 'email / password is incorrect' })
@@ -37,7 +37,6 @@ authRouter.post('/login', async (req, res) => {
         // prepare the payload
         const payload = {
             sub: user._id.toString(),
-            role: user.role,
             sessionId: session._id.toString()
         }
 
@@ -49,7 +48,7 @@ authRouter.post('/login', async (req, res) => {
             user: {
                 id: user._id,
                 email: user.email,
-                role: user.role
+                roles: user.roles
             },
             accessToken,
         })

@@ -1,5 +1,6 @@
 import jwt, { decode } from 'jsonwebtoken'
 import {Session} from '../model/session.js'
+import User from '../model/user.js'
 
 export async function requireAuth(req, res, next) {
     try {
@@ -18,17 +19,23 @@ export async function requireAuth(req, res, next) {
         // 4. Retrieve the session Id
         const session = await Session.findById(decoded.sessionId)
         if (!session) {
-            return res.status(401).json({ message: 'Session revoked or not found' });
+            return res.status(401).json({ message: 'Session not found' });
         }
-
         session.lastSeenAt = new Date()
         await session.save()
-        
-        req.user = {
-            id: decoded.sub,
-            role: decoded.role,
-            sessionId: decoded.sessionId
+
+        const user = await User.findById(decoded.sub).populate({
+            path: "roles",
+            populate: { path: "permissions" }
+        });
+
+        if (!user) {
+            return res.status(401).json({ error: "Invalid user" });
         }
+
+        req.user = user;
+        req.sessionId = decoded.sessionId;
+        
         next()
     } catch(e) {
         console.log('Error while checking the authorization information', e)

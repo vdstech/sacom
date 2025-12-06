@@ -5,7 +5,7 @@ const UserSchema = new mongoose.Schema({
     name: {type: String, required: true, trim: true},
     passwordHash: {type: String, required: true},
 
-    role: {type: mongoose.Schema.Types.ObjectId, ref: 'Role', required: true},   
+    roles: [{type: mongoose.Schema.Types.ObjectId, ref: 'Role', required: true}],   
 
     disabled: {type: Boolean, default: true},
     force_reset: {type: Boolean, default: false},

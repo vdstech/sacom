@@ -1,18 +1,50 @@
+import Permission from '../model/permission.js'
+
+function gatherChildren(permission, all = new Set()) {
+    all.add(permission.code)
+
+    if (!permission.children || permission.children.length == 0) {
+        return all
+    }
+
+    for (const child of permission.children) {
+        all.add(child.code)
+
+        if (child.children && child.children.length > 0) {
+            gatherChildren(child, all)
+        }
+    }
+
+    return all
+}
+
+export default requiresPermission
+
 export function requiresPermission(permissionCode) {
-    return ((req, res, next) => {
-        const user = req.user
-        if (!user || !user.role || !Array.isArray(user.role.permissions)) {
-            res.status(401).json({'UnAuthorized' : 'User does not have sufficient roles or permissions'})
-        }
+    return async (req, res, next) => {
+        try {
+            const user = req.user
+            const rolePermissions = await Permission.find({
+                _id: {$in: user.roles.flatMap(r => r.permissions)}
+            }).populate({
+                path: "children",
+                populate: { path: "children" }
+            })
 
-        const hasPermisison = user.role.permissions.some((p) => {
-            p.code == permissionCode
-        })
+            const effectivePermissions = new Set()
+            for (const perm of rolePermissions) {
+                gatherChildren(perm, effectivePermissions)
+            }
 
-        if (!hasPermisison) {
-            res.status(401).json({'UnAuthorized' : 'User does not have permissions'})
+            if (!effectivePermissions.has(permissionCode)) {
+                return res.status(403).json({error: "Access Denied"})
+            }
+
+            next()
+
+        } catch (e) {
+            console.error('Error occured while gathering permissions and matching with role, e')
+            return res.status(500).json({error: "Internal error"})
         }
-        
-        next()
-    })
+    }
 }
