@@ -5,32 +5,29 @@ import {hashPassword} from '../security/password.js'
 import {createUserValidation} from '../validators/adminValidators.js'
 import {handleValidation} from '../middleware/handleValidation.js'
 import {requireAuth} from '../middleware/requireAuth.js'
-import { bootStrapGuard } from '../middleware/bootstrapGuard.js'
 import {requiresPermission} from '../middleware/requiresPermission.js'
 
 const r = Router()
 
-r.post('/', requireAuth, requiresPermission('USER_CREATE'), createUserValidation, handleValidation, async (req, res) => {
-    const {email, name, roleName, password} = req.body
+r.post('/', requireAuth, requiresPermission('USER_WRITE'), createUserValidation, handleValidation, async (req, res) => {
+    const {email, name, roles, password} = req.body
 
-    console.log("email = ", email)
-    console.log("name = ", name)
-    console.log("roleName = ", roleName)
-    console.log("password = ", password)
     const exists = await User.findOne({email})
     if (exists) {
         return res.status(409).json({error: 'User with this email already exists'})
     }
 
-     const role = await Role.findOne({ name: roleName });
-    // validator already checked existence; just being safe:
-    if (!role) return res.status(400).json({ error: 'invalid role' });
+    const roleDocs = await Role.find({_id: {$in: roles}})
+    // validator already checked basic shape; double-check roles actually exist
+    if (roleDocs.length !== roles.length) {
+        return res.status(400).json({ error: 'invalid role(s)' })
+    }
 
     const passwordHash = await hashPassword(password)
     const user = await User.create({
         email,
         name,
-        role: role._id,
+        roles: roleDocs.map(r => r._id),
         passwordHash
         // for future: passwordExpiresAt: new Date(Date.now() + N days)
     })
@@ -39,7 +36,7 @@ r.post('/', requireAuth, requiresPermission('USER_CREATE'), createUserValidation
         id : user.id,
         email: user.email,
         name: user.name,
-        role: role.name,
+        roles: roleDocs.map(r => ({ id: r._id, name: r.name })),
         createdAt: user.createdAt
 
     })
@@ -51,6 +48,11 @@ r.get('/', requireAuth, requiresPermission('USER_READ'), handleValidation, async
 })
 
 r.delete('/', requireAuth, requiresPermission('USER_DELETE'), handleValidation, async (req, res) => {
+    
+    if (req.user.isSystemUser) {
+        return res.status(403).json({error: "System user cannot be deleted"});
+    }
+    
     const user = await User.findByIdAndDelete(req.body.id)
     if (!user) {
         res.status(409).json({"status" : "User did not exist"})

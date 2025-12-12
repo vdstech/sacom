@@ -37,6 +37,7 @@ authRouter.post('/login', async (req, res) => {
         // prepare the payload
         const payload = {
             sub: user._id.toString(),
+            systemUser: user.isSystemUser,
             sessionId: session._id.toString()
         }
 

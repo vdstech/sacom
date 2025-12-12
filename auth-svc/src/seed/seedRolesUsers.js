@@ -82,7 +82,8 @@ async function seed() {
     { name: "SUPER_ADMIN" },
     {
       name: "SUPER_ADMIN",
-      permissions: groupCodes.map(code => permissionDocs[code]._id)
+      permissions: groupCodes.map(code => permissionDocs[code]._id),
+      isSystemRole: true
     },
     { upsert: true, new: true }
   );
@@ -100,7 +101,8 @@ async function seed() {
       email: "superadmin@sa.com",
       password: superPass,
       passwordHash: superPass,
-      roles: [superAdminRole._id]
+      roles: [superAdminRole._id],
+      isSystemUser: true
     },
     { upsert: true }
   );

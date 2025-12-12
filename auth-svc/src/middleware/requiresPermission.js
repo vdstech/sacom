@@ -23,9 +23,9 @@ export default requiresPermission
 export function requiresPermission(permissionCode) {
     return async (req, res, next) => {
         try {
-            const user = req.user
+            console.log('Came to Requires Permission ', req.user.roles)
             const rolePermissions = await Permission.find({
-                _id: {$in: user.roles.flatMap(r => r.permissions)}
+                _id: {$in: req.user.roles.flatMap(r => r.permissions)}
             }).populate({
                 path: "children",
                 populate: { path: "children" }

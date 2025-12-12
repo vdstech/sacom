@@ -11,7 +11,8 @@ const UserSchema = new mongoose.Schema({
     force_reset: {type: Boolean, default: false},
 
     passwordExpiresAt: {type: Date},
-    lastLogin: {type: Date}
+    lastLogin: {type: Date},
+    isSystemUser: {type: Boolean, default: false}
 }, 
 {
     timestamps: true

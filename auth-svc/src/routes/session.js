@@ -4,26 +4,25 @@ import {Session} from '../model/session.js'
 
 const router = Router()
 try {
-    router.get('/', async (req, res) => {
-        const sessions = await Session.find({user: req.body.userId}).sort({createdAt: -1})
+    router.get('/', requireAuth, async (req, res) => {
+        const sessions = await Session.find({user: req.user._id}).sort({createdAt: -1})
         return res.json({sessions})
     })
 
 
-    router.delete('/deleteSession', async (req, res) => {
-        const result = await Session.deleteOne(
-            {user: req.body.userId, _id: req.body.sessionId}
+    router.delete('/deleteSession', requireAuth, async (req, res) => {
+        const result = await Session.deleteOne({_id: req.body.sessionId}
         )
         return res.json({message: 'Logged out from the session', count: result.deletedCount})
     })
 
-    router.delete('/deleteAllSessions', async (req, res) => {
-        const result = await Session.deleteMany({user: req.body.userId})
+    router.delete('/deleteAllSessions', requireAuth, async (req, res) => {
+        const result = await Session.deleteMany({user: req.user._id})
         return res.json({message: 'Logged out from all devices', count: result.deletedCount});
     })
 
     router.delete('/logout', requireAuth, async (req, res) => {
-        const deletedSession = await Session.findByIdAndDelete(req.user.sessionId)
+        const deletedSession = await Session.findByIdAndDelete(req.sessionId)
         res.json({
             message: 'Logged out from the current user',
             count: deletedSession ? 1 : 0

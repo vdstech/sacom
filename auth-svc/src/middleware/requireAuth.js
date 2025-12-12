@@ -24,9 +24,16 @@ export async function requireAuth(req, res, next) {
         session.lastSeenAt = new Date()
         await session.save()
 
+        // **IMPORTANT: FULL DEEP POPULATION**
         const user = await User.findById(decoded.sub).populate({
-            path: "roles",
-            populate: { path: "permissions" }
+        path: "roles",
+        populate: {
+            path: "permissions",
+            populate: {
+            path: "children",   // load level 1 children
+            populate: { path: "children" } // recursively populate level 2 children
+            }
+        }
         });
 
         if (!user) {
