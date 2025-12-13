@@ -7,12 +7,12 @@ import { connectMongo } from './db.js'
 import {getTlsOptions} from './tls.js'
 import https from 'https'
 import http from 'http'
-import rolesRouter from '../src/routes/role.js'
-import adminUsers from '../src/routes/admin.js'
-import meRouter from '../src/routes/me.js'
-import authRouter from '../src/routes/auth.js';
-import sessionRouter from '../src/routes/session.js'
-import permissionRouter from '../src/routes/permissions.js'
+import rolesRouter from './auth/routes/role.js'
+import adminUsers from './auth/routes/admin.js'
+import meRouter from './auth/routes/me.js'
+import authRouter from './auth/routes/auth.js';
+import sessionRouter from './auth/routes/session.js'
+import permissionRouter from './auth/routes/permissions.js'
 
 const app = express()
 

@@ -2,26 +2,36 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 dotenv.config();
 
-import Permission from "../model/permission.js";
-import Role from "../model/role.js";
-import User from "../model/user.js";
-import {hashPassword} from "../security/password.js"
+import Permission from "../auth/model/permission.js";
+import Role from "../auth/model/role.js";
+import User from "../auth/model/user.js";
+import { hashPassword } from "../security/password.js";
 
 async function seed() {
   await mongoose.connect(process.env.MONGO_URI);
   console.log("Connected to MongoDB\n");
 
   // ---------------------------------------------------------
-  // 1. PERMISSION HIERARCHY
+  // 1. PERMISSION HIERARCHY (NAMESPACED)
   // ---------------------------------------------------------
   const permissionGroups = {
-    USER_WRITE: ["USER_READ", "USER_CREATE", "USER_UPDATE", "USER_DELETE"],
-    ROLE_WRITE: ["ROLE_READ", "ROLE_CREATE", "ROLE_UPDATE", "ROLE_DELETE"],
-    PERMISSION_WRITE: [
-      "PERMISSION_READ",
-      "PERMISSION_CREATE",
-      "PERMISSION_UPDATE",
-      "PERMISSION_DELETE"
+    "user:write": [
+      "user:read",
+      "user:create",
+      "user:update",
+      "user:delete"
+    ],
+    "role:write": [
+      "role:read",
+      "role:create",
+      "role:update",
+      "role:delete"
+    ],
+    "permission:write": [
+      "permission:read",
+      "permission:create",
+      "permission:update",
+      "permission:delete"
     ]
   };
 
@@ -49,7 +59,7 @@ async function seed() {
   }
 
   // ---------------------------------------------------------
-  // 3. Seed all group permissions (initially empty children)
+  // 3. Seed all group permissions
   // ---------------------------------------------------------
   for (const code of groupCodes) {
     const perm = await Permission.findOneAndUpdate(
@@ -77,22 +87,41 @@ async function seed() {
   // 5. Create ROLES
   // ---------------------------------------------------------
 
-  // SUPER_ADMIN gets all group permissions (WRITE permissions)
+  // SUPER_ADMIN → USER + ROLE + PERMISSION (all group permissions)
   const superAdminRole = await Role.findOneAndUpdate(
     { name: "SUPER_ADMIN" },
     {
       name: "SUPER_ADMIN",
       permissions: groupCodes.map(code => permissionDocs[code]._id),
-      isSystemRole: true
+      isSystemRole: true,
+      systemLevel: "SUPER"
     },
     { upsert: true, new: true }
   );
 
   console.log("SUPER_ADMIN role ready");
 
+  // ADMIN → ONLY USER permissions
+  const adminRole = await Role.findOneAndUpdate(
+    { name: "ADMIN" },
+    {
+      name: "ADMIN",
+      permissions: [
+        permissionDocs["user:write"]._id
+      ],
+      isSystemRole: true,
+      systemLevel: "ADMIN"
+    },
+    { upsert: true, new: true }
+  );
+
+  console.log("ADMIN role ready");
+
   // ---------------------------------------------------------
   // 6. Create users
   // ---------------------------------------------------------
+
+  // SUPER ADMIN USER
   const superPass = await hashPassword("SuperAdmin@123");
   await User.findOneAndUpdate(
     { email: "superadmin@sa.com" },

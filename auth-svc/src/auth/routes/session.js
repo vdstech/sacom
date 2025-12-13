@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { requireAuth } from '../middleware/requireAuth.js'
+import { requireAuth } from '../../middleware/requireAuth.js'
 import {Session} from '../model/session.js'
 
 const router = Router()

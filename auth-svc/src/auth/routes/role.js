@@ -1,12 +1,12 @@
 import {Router} from 'express'
 import Role from '../model/role.js'
-import { handleValidation } from '../middleware/handleValidation.js'
+import { handleValidation } from '../../middleware/handleValidation.js'
 import { createRoleValidator } from '../validators/adminValidators.js'
-import { requireAuth } from '../middleware/requireAuth.js'
-import {requiresPermission} from '../middleware/requiresPermission.js'
+import { requireAuth } from '../../middleware/requireAuth.js'
+import {requiresPermission} from '../../middleware/requiresPermission.js'
 
 const r = Router()
-r.post('/', requireAuth, createRoleValidator, requiresPermission('ROLE_WRITE'), handleValidation, async (req, res) => {
+r.post('/', requireAuth, createRoleValidator, requiresPermission(['role:create', 'role:read']), handleValidation, async (req, res) => {
     const { name, permissions, description } = req.body
 
     const exists = await Role.findOne({name})
@@ -20,12 +20,12 @@ r.post('/', requireAuth, createRoleValidator, requiresPermission('ROLE_WRITE'), 
     return res.status(201).json(role)
 })
 
-r.get('/', requireAuth, requiresPermission('ROLE_READ'), handleValidation, async(req, res) =>{
+r.get('/', requireAuth, requiresPermission('role:read'), handleValidation, async(req, res) =>{
     const roles = await Role.find().sort({name: 1}).lean()
     return res.json(roles)
 })
 
-r.delete('/', requireAuth, requiresPermission('ROLE_DELETE'), handleValidation, async(req, res) => {
+r.delete('/', requireAuth, requiresPermission('role:delete'), handleValidation, async(req, res) => {
     const {id} = req.body
     const role = await Role.findById(id)
     if (!role) {

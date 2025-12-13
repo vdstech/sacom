@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken'
 import express from 'express'
 
 import User from '../model/user.js'
-import { verify } from '../security/password.js'
+import { verify } from '../../security/password.js'
 import {Session} from '../model/session.js'
 
 

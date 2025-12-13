@@ -19,7 +19,12 @@ const RoleSchema = new mongoose.Schema({
     isSystemRole:{
         type: Boolean,
         default: false
-    }
+    },
+    systemLevel: {
+        type: String,
+        enum: ["NONE", "ADMIN", "SUPER"],
+        default: "NONE"
+  }
 }, { timestamps: true})
 
 RoleSchema.index({name: 1})

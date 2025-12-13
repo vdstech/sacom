@@ -1,15 +1,15 @@
 import {Router} from 'express'
 import Role from '../model/role.js'
 import User from '../model/user.js'
-import {hashPassword} from '../security/password.js'
+import {hashPassword} from '../../security/password.js'
 import {createUserValidation} from '../validators/adminValidators.js'
-import {handleValidation} from '../middleware/handleValidation.js'
-import {requireAuth} from '../middleware/requireAuth.js'
-import {requiresPermission} from '../middleware/requiresPermission.js'
+import {handleValidation} from '../../middleware/handleValidation.js'
+import {requireAuth} from '../../middleware/requireAuth.js'
+import {requiresPermission} from '../../middleware/requiresPermission.js'
 
 const r = Router()
 
-r.post('/', requireAuth, requiresPermission('USER_WRITE'), createUserValidation, handleValidation, async (req, res) => {
+r.post('/', requireAuth, requiresPermission('user:write'), createUserValidation, handleValidation, async (req, res) => {
     const {email, name, roles, password} = req.body
 
     const exists = await User.findOne({email})
@@ -42,12 +42,12 @@ r.post('/', requireAuth, requiresPermission('USER_WRITE'), createUserValidation,
     })
 })
 
-r.get('/', requireAuth, requiresPermission('USER_READ'), handleValidation, async (req, res) => {
+r.get('/', requireAuth, requiresPermission('user:read'), handleValidation, async (req, res) => {
     const users = await User.find().sort({name: 1}).lean()
     return res.json(users)
 })
 
-r.delete('/', requireAuth, requiresPermission('USER_DELETE'), handleValidation, async (req, res) => {
+r.delete('/', requireAuth, requiresPermission('user:delete'), handleValidation, async (req, res) => {
     
     if (req.user.isSystemUser) {
         return res.status(403).json({error: "System user cannot be deleted"});

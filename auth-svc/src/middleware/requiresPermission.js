@@ -1,4 +1,4 @@
-import Permission from '../model/permission.js'
+import Permission from '../auth/model/permission.js'
 
 function gatherChildren(permission, all = new Set()) {
     all.add(permission.code)
@@ -20,10 +20,35 @@ function gatherChildren(permission, all = new Set()) {
 
 export default requiresPermission
 
-export function requiresPermission(permissionCode) {
+export function requiresPermission(...permissionCodes) {
+    const codes = permissionCodes.flat().filter(Boolean)
+
     return async (req, res, next) => {
         try {
             console.log('Came to Requires Permission ', req.user.roles)
+            const roles = req.user.roles || []
+            
+            // Super admins bypass all permission checks
+            if (roles.some(r => r.systemLevel === 'SUPER')) {   
+                return next()
+            }
+
+            // Admins bypass everything except role/permission management
+            const hasAdminAccess = roles.some(r => r.systemLevel === 'ADMIN')
+            const adminBypass = hasAdminAccess &&
+                codes.every(code =>
+                    !code.startsWith('role:') &&
+                    !code.startsWith('permission:')
+                )
+
+            if (adminBypass) {
+                return next()
+            }
+
+            if (codes.length === 0) {
+                return res.status(403).json({error: "Access Denied"})
+            }
+
             const rolePermissions = await Permission.find({
                 _id: {$in: req.user.roles.flatMap(r => r.permissions)}
             }).populate({
@@ -36,7 +61,8 @@ export function requiresPermission(permissionCode) {
                 gatherChildren(perm, effectivePermissions)
             }
 
-            if (!effectivePermissions.has(permissionCode)) {
+            const missing = codes.filter(code => !effectivePermissions.has(code))
+            if (missing.length > 0) {
                 return res.status(403).json({error: "Access Denied"})
             }
 
