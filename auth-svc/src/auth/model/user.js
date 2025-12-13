@@ -20,4 +20,20 @@ const UserSchema = new mongoose.Schema({
 
 UserSchema.index({email: 1})
 
+UserSchema.pre("save", async function (next) {
+    if (this.systemLevel !== "SUPER") return next();
+
+    const existing = await mongoose.model("User").countDocuments({
+        systemLevel: "SUPER",
+        _id: { $ne: this._id }
+    });
+
+    if (existing > 0) {
+        return next(
+            new Error("Only one SUPER_ADMIN user is allowed")
+        );
+    }
+    next();
+});
+
 export default mongoose.model('User', UserSchema)

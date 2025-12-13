@@ -7,27 +7,31 @@ const r = Router()
 
 r.post('/', requireAuth, requiresPermission('permission:create'), async (req, res) => {
     try {
-        const permisson = await Permission.create(req.body)
 
-        // 2️⃣ Attach permission to ADMIN role
         const adminRole = await Role.findOne({ name: 'ADMIN' });
-
         if (!adminRole) {
-            // Fail loudly – this should never happen
+            // Fail loudly – invariant broken
             return res.status(500).json({
-                error: 'ADMIN role not found. Permission created but not assigned.'
+                error: 'ADMIN role not found. Create ADMIN role first.'
             });
         }
 
+        // 1️⃣ Create permission FIRST
+        const permission = await Permission.create(req.body);
+
+        // 2️⃣ Attach permission to ADMIN role
         await Role.updateOne(
             { _id: adminRole._id },
             { $addToSet: { permissions: permission._id } }
         );
-        res.status(201).json({permisson})
+
+        // 3️⃣ Respond
+        res.status(201).json({ permission });
     } catch (e) {
         res.status(400).json({ error: e.message })
     }
 })
+    
 
 r.get('/', requireAuth, requiresPermission('permission:read'), async (req, res) => {
     try {

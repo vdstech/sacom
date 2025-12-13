@@ -121,6 +121,16 @@ async function seed() {
   // 6. Create users
   // ---------------------------------------------------------
 
+  // Ensure only one SUPER_ADMIN exists
+  const count = await User.countDocuments({ systemLevel: "SUPER" });
+  if (count > 0) {
+    throw new Error("SUPER_ADMIN already exists");
+  }
+
+  if (existingSuperAdminCount > 0) {
+    throw new Error("SUPER_ADMIN already exists. Seed must not create another.");
+  }
+
   // SUPER ADMIN USER
   const superPass = await hashPassword("SuperAdmin@123");
   await User.findOneAndUpdate(

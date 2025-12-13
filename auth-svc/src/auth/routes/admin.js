@@ -17,6 +17,11 @@ r.post('/', requireAuth, requiresPermission('user:write'), createUserValidation,
         return res.status(409).json({error: 'User with this email already exists'})
     }
 
+    const superAdminRole = await Role.findOne({ name: "SUPER_ADMIN" });
+    if (superAdminRole && req.body.roles?.includes(superAdminRole._id.toString())) {
+        return res.status(403).json({error: "SUPER_ADMIN user cannot be created or assigned via API"});
+    }
+
     const roleDocs = await Role.find({_id: {$in: roles}})
     // validator already checked basic shape; double-check roles actually exist
     if (roleDocs.length !== roles.length) {
