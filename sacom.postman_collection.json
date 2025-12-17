@@ -1,0 +1,483 @@
+{
+	"info": {
+		"_postman_id": "6aab9438-b083-45dc-a0e3-533065697ed0",
+		"name": "sacom",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "3798290"
+	},
+	"item": [
+		{
+			"name": "health",
+			"item": [
+				{
+					"name": "health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "https://localhost:4443/health",
+							"protocol": "https",
+							"host": [
+								"localhost"
+							],
+							"port": "4443",
+							"path": [
+								"health"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "auth-svc",
+			"item": [
+				{
+					"name": "admin-user",
+					"item": [
+						{
+							"name": "addUser",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"email\": \"karunakar0208@yahoo.com\",\n    \"name\": \"Karunakar\",\n    \"roles\": [\"693c292ff2741e3f71b9837f\"],\n    \"password\":\"Administrator@123\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "https://localhost:4443/api/admin/users",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"api",
+										"admin",
+										"users"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "getUsers",
+							"protocolProfileBehavior": {
+								"disableBodyPruning": true
+							},
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "https://localhost:4443/api/admin/users",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"api",
+										"admin",
+										"users"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "deleteUser",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"id\": \"{{userID}}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "https://localhost:4443/api/admin/users",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"api",
+										"admin",
+										"users"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "roles",
+					"item": [
+						{
+							"name": "insertRole",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"Admin\",\n    \"description\": \"The daily adminstration tasks user\",\n    \"permissions\": [\"693c24c312d1761e4ec1e7db\", \"693c24c312d1761e4ec1e7da\"]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "https://localhost:4443/api/admin/roles/",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"api",
+										"admin",
+										"roles",
+										""
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "getRoles",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "https://localhost:4443/api/admin/roles/",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"api",
+										"admin",
+										"roles",
+										""
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "deleteRoles",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"id\": \"{{roleID}}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "https://localhost:4443/api/admin/roles/",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"api",
+										"admin",
+										"roles",
+										""
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "login",
+					"item": [
+						{
+							"name": "login",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "x-bootstrap-admin",
+										"value": "secret",
+										"type": "text",
+										"disabled": true
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"email\" : \"karunakar0208@yahoo.com\",\n    \"password\" : \"Administrator@123\"\n}"
+								},
+								"url": {
+									"raw": "https://localhost:4443/login",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"login"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "session",
+					"item": [
+						{
+							"name": "getSessions",
+							"protocolProfileBehavior": {
+								"disableBodyPruning": true
+							},
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "https://localhost:4443/auth/session",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"auth",
+										"session"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "deleteSession",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"sessionId\": \"693c276bc09798e0071571a4\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "https://localhost:4443/auth/session/deleteSession",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"auth",
+										"session",
+										"deleteSession"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "deleteSessions",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"userId\": \"691cb0aa9745bfc2edc0349a\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "https://localhost:4443/auth/session/deleteAllSessions",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"auth",
+										"session",
+										"deleteAllSessions"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "logout",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "https://localhost:4443/auth/session/logout",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"auth",
+										"session",
+										"logout"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "permissions",
+					"item": [
+						{
+							"name": "getPermissions",
+							"protocolProfileBehavior": {
+								"disableBodyPruning": true
+							},
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": ""
+								},
+								"url": {
+									"raw": "https://localhost:4443/api/admin/permissions",
+									"protocol": "https",
+									"host": [
+										"localhost"
+									],
+									"port": "4443",
+									"path": [
+										"api",
+										"admin",
+										"permissions"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		}
+	]
+}

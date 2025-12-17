@@ -12,7 +12,7 @@ const UserSchema = new mongoose.Schema({
 
     passwordExpiresAt: {type: Date},
     lastLogin: {type: Date},
-    isSystemUser: {type: Boolean, default: false}
+    isSystemUser: {type: Boolean, default: false},
 }, 
 {
     timestamps: true

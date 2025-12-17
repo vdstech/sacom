@@ -25,11 +25,11 @@ export function requiresPermission(...permissionCodes) {
 
     return async (req, res, next) => {
         try {
-            console.log('Came to Requires Permission ', req.user.roles)
             const roles = req.user.roles || []
             
             // Super admins bypass all permission checks
-            if (roles.some(r => r.systemLevel === 'SUPER')) {   
+            if (roles.some(r => {
+                r.systemLevel === 'SUPER'})) {   
                 return next()
             }
 

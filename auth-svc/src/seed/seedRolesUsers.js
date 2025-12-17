@@ -122,18 +122,36 @@ async function seed() {
   // ---------------------------------------------------------
 
   // Ensure only one SUPER_ADMIN exists
-  const count = await User.countDocuments({ systemLevel: "SUPER" });
+  const result = await User.aggregate([
+    {
+      $lookup: {
+        from: "roles",
+        localField: "roles",
+        foreignField: "_id",
+        as: "roleDocs"
+      }
+    },
+    {
+      $unwind: "$roleDocs"
+    },
+    {
+      $match: {
+        "roleDocs.systemLevel": "SUPER"
+      }
+    },
+    {
+      $count: "count"
+    }
+  ]);
+  
+  const count = result[0]?.count || 0;
   if (count > 0) {
-    throw new Error("SUPER_ADMIN already exists");
-  }
-
-  if (existingSuperAdminCount > 0) {
-    throw new Error("SUPER_ADMIN already exists. Seed must not create another.");
+    throw new Error("SUPER_ADMIN user already exists");
   }
 
   // SUPER ADMIN USER
   const superPass = await hashPassword("SuperAdmin@123");
-  await User.findOneAndUpdate(
+  const userCreated = await User.findOneAndUpdate(
     { email: "superadmin@sa.com" },
     {
       name: "Super Admin",
@@ -141,12 +159,13 @@ async function seed() {
       password: superPass,
       passwordHash: superPass,
       roles: [superAdminRole._id],
-      isSystemUser: true
+      isSystemUser: true,
+      systemLevel: 'SUPER'
     },
     { upsert: true }
   );
 
-  console.log("Users created\n");
+  console.log("Users created\n", userCreated);
 
   mongoose.connection.close();
   console.log("Seeding complete!");

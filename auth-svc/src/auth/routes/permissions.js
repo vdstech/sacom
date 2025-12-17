@@ -2,13 +2,16 @@ import {Router} from 'express'
 import {requireAuth} from '../../middleware/requireAuth.js'
 import {requiresPermission} from '../../middleware/requiresPermission.js'
 import Permission from '../model/permission.js'
+import {handleValidation} from '../../middleware/handleValidation.js'
 
 const r = Router()
 
-r.post('/', requireAuth, requiresPermission('permission:create'), async (req, res) => {
+r.post('/', requireAuth, requiresPermission('permission:create'), handleValidation, async (req, res) => {
     try {
 
+        console.log('Checking for admin role.....')
         const adminRole = await Role.findOne({ name: 'ADMIN' });
+        console.log('Checking for admin role.....2---------- ', adminRole)
         if (!adminRole) {
             // Fail loudly – invariant broken
             return res.status(500).json({
@@ -16,10 +19,12 @@ r.post('/', requireAuth, requiresPermission('permission:create'), async (req, re
             });
         }
 
+        console.log('admin role is there..........creating permission............')
         // 1️⃣ Create permission FIRST
         const permission = await Permission.create(req.body);
 
         // 2️⃣ Attach permission to ADMIN role
+        console.log('updating permission to admin role............')
         await Role.updateOne(
             { _id: adminRole._id },
             { $addToSet: { permissions: permission._id } }
