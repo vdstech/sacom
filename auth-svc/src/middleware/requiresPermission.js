@@ -1,4 +1,4 @@
-import Permission from '../auth/model/permission.js'
+import Permission from '../auth/models/permissionModel.js'
 
 function gatherChildren(permission, all = new Set()) {
     all.add(permission.code)
@@ -27,12 +27,13 @@ export function requiresPermission(...permissionCodes) {
         try {
             const roles = req.user.roles || []
             
-            // Super admins bypass all permission checks
-            if (roles.some(r => {
-                r.systemLevel === 'SUPER'})) {   
+            console.log('User roles:', roles)
+            if (roles.some(r => r.systemLevel === 'SUPER')) {
+                console.log('Bypassing permission checks for SUPER admin')
                 return next()
             }
 
+            
             // Admins bypass everything except role/permission management
             const hasAdminAccess = roles.some(r => r.systemLevel === 'ADMIN')
             const adminBypass = hasAdminAccess &&

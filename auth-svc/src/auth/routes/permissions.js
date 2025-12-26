@@ -1,68 +1,28 @@
-import {Router} from 'express'
-import {requireAuth} from '../../middleware/requireAuth.js'
-import {requiresPermission} from '../../middleware/requiresPermission.js'
-import Permission from '../model/permission.js'
-import {handleValidation} from '../../middleware/handleValidation.js'
+import { Router } from "express";
+import { requireAuth } from "../../middleware/requireAuth.js";
+import { requiresPermission } from "../../middleware/requiresPermission.js";
+import { handleValidation } from "../../middleware/handleValidation.js";
+import * as controller from "../controllers/permissionsController.js";
 
-const r = Router()
+const r = Router();
 
-r.post('/', requireAuth, requiresPermission('permission:create'), handleValidation, async (req, res) => {
-    try {
+r.post(
+  "/",
+  requireAuth,
+  requiresPermission("permission:create"),
+  handleValidation,
+  controller.createPermission
+);
 
-        console.log('Checking for admin role.....')
-        const adminRole = await Role.findOne({ name: 'ADMIN' });
-        console.log('Checking for admin role.....2---------- ', adminRole)
-        if (!adminRole) {
-            // Fail loudly – invariant broken
-            return res.status(500).json({
-                error: 'ADMIN role not found. Create ADMIN role first.'
-            });
-        }
+r.get("/", requireAuth, requiresPermission("permission:read"), controller.listPermissions);
 
-        console.log('admin role is there..........creating permission............')
-        // 1️⃣ Create permission FIRST
-        const permission = await Permission.create(req.body);
+r.put("/", requireAuth, requiresPermission("permission:create"), controller.updatePermissions);
 
-        // 2️⃣ Attach permission to ADMIN role
-        console.log('updating permission to admin role............')
-        await Role.updateOne(
-            { _id: adminRole._id },
-            { $addToSet: { permissions: permission._id } }
-        );
+r.delete(
+  "/:id",
+  requireAuth,
+  requiresPermission("permission:delete"),
+  controller.deletePermission
+);
 
-        // 3️⃣ Respond
-        res.status(201).json({ permission });
-    } catch (e) {
-        res.status(400).json({ error: e.message })
-    }
-})
-    
-
-r.get('/', requireAuth, requiresPermission('permission:read'), async (req, res) => {
-    try {
-        const permissions = await Permission.find()
-        res.status(200).json({permissions})
-    } catch (e) {
-        res.status(400).json({ error: e.message })
-    }
-})
-
-r.put('/', requireAuth, requiresPermission('permission:create'), async (req, res) => {
-    try {
-        const permissions = await Permission.find()
-        res.status(200).json({permissions})
-    } catch (e) {
-        res.status(400).json({ error: e.message })
-    }
-})
-
-r.delete('/:id', requireAuth, requiresPermission('permission:delete'), async (req, res) => {
-    try {
-        const permission = await Permission.findByIdAndDelete(req.params.id)
-        res.status(200).json({permission})
-    } catch(e) {
-        res.status(400).json({ error: e.message })
-    }
-})
-
-export default r
+export default r;

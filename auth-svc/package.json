@@ -7,7 +7,7 @@
     "db:reset": "mongosh auth_db --eval \"db.dropDatabase()\"",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "seed": "node src/seed/seedRolesUsers.js"
+    "seed": "node src/seed/seed.js"
   },
   "keywords": [
     "auth"

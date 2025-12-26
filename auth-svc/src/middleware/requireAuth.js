@@ -1,6 +1,6 @@
 import jwt, { decode } from 'jsonwebtoken'
-import {Session} from '../auth/model/session.js'
-import User from '../auth/model/user.js'
+import {Session} from '../auth/models/sessionModel.js'
+import User from '../auth/models/userModel.js'
 
 export async function requireAuth(req, res, next) {
     try {

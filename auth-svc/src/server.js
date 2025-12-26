@@ -13,6 +13,7 @@ import meRouter from './auth/routes/me.js'
 import authRouter from './auth/routes/auth.js';
 import sessionRouter from './auth/routes/session.js'
 import permissionRouter from './auth/routes/permissions.js'
+import categoryRouter from "./catalog/routes/categoryRoutes.js";
 
 const app = express()
 
@@ -37,6 +38,7 @@ app.use('/api/', meRouter)
 app.use('/', authRouter)
 app.use('/auth/session', sessionRouter)
 app.use('/api/admin/permissions', permissionRouter)
+app.use("/api/categories", categoryRouter);
 
 app.get('/health', (req, res) => {
     res.json({ok: true, service: 'auth-svc', time: new Date().toISOString()})

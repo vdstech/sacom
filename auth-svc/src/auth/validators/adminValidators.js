@@ -1,5 +1,5 @@
 import {body} from 'express-validator'
-import Role from '../model/role.js'
+import Role from '../models/roleModel.js'
 
 export const createUserValidation = [
     body('email').isString().withMessage('Email is required').normalizeEmail(),
