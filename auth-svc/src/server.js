@@ -61,6 +61,11 @@ app.use('/', authRouter)
 app.use('/auth/session', sessionRouter)
 app.use('/api/admin/permissions', permissionRouter)
 
+// Deprecated: product routes moved behind gateway to product-svc
+app.use('/products', (req, res) => {
+    res.status(410).json({ error: 'Products API has moved to product-svc' })
+})
+
 app.get('/health', (req, res) => {
     res.json({ok: true, service: 'auth-svc', time: new Date().toISOString()})
 })
