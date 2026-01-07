@@ -16,6 +16,6 @@ const permissionSchema = mongoose.Schema({
         type: mongoose.Types.ObjectId,
         ref: "Permission"
     }]
-})
+}, { timestamps: true, collection: "backend_permissions"})
 
 export default mongoose.model('Permission', permissionSchema)

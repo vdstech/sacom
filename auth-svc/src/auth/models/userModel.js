@@ -7,15 +7,17 @@ const UserSchema = new mongoose.Schema({
 
     roles: [{type: mongoose.Schema.Types.ObjectId, ref: 'Role', required: true}],   
 
-    disabled: {type: Boolean, default: true},
+    disabled: {type: Boolean, default: false    },
     force_reset: {type: Boolean, default: false},
+    systemLevel: {type: String, enum: ["NONE", "ADMIN", "SUPER"], default: "NONE"},
 
     passwordExpiresAt: {type: Date},
     lastLogin: {type: Date},
     isSystemUser: {type: Boolean, default: false},
 }, 
 {
-    timestamps: true
+    timestamps: true,
+    collection: "backend_users"
 })
 
 UserSchema.index({email: 1})

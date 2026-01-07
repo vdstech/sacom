@@ -1,77 +1,71 @@
-import Permission from '../auth/models/permissionModel.js'
+// Permission enforcement middleware.
+// - Requires `requireAuth` to run before it.
+// - SUPER admins bypass all checks.
+// - ADMIN users:
+//     * may READ permissions
+//     * may NOT CREATE/UPDATE/DELETE permissions (hard deny)
 
-function gatherChildren(permission, all = new Set()) {
-    all.add(permission.code)
+const ADMIN_PERMISSION_DENY = new Set([
+  "permission:create",
+  "permission:update",
+  "permission:delete",
+  // include if you use a generic write/manage code
+  "permission:write",
+]);
 
-    if (!permission.children || permission.children.length == 0) {
-        return all
-    }
-
-    for (const child of permission.children) {
-        all.add(child.code)
-
-        if (child.children && child.children.length > 0) {
-            gatherChildren(child, all)
-        }
-    }
-
-    return all
+function isPermissionDomain(code) {
+  return typeof code === "string" && code.startsWith("permission:");
 }
 
-export default requiresPermission
-
-export function requiresPermission(...permissionCodes) {
-    const codes = permissionCodes.flat().filter(Boolean)
-
-    return async (req, res, next) => {
-        try {
-            const roles = req.user.roles || []
-            
-            console.log('User roles:', roles)
-            if (roles.some(r => r.systemLevel === 'SUPER')) {
-                console.log('Bypassing permission checks for SUPER admin')
-                return next()
-            }
-
-            
-            // Admins bypass everything except role/permission management
-            const hasAdminAccess = roles.some(r => r.systemLevel === 'ADMIN')
-            const adminBypass = hasAdminAccess &&
-                codes.every(code =>
-                    !code.startsWith('role:') &&
-                    !code.startsWith('permission:')
-                )
-
-            if (adminBypass) {
-                return next()
-            }
-
-            if (codes.length === 0) {
-                return res.status(403).json({error: "Access Denied"})
-            }
-
-            const rolePermissions = await Permission.find({
-                _id: {$in: req.user.roles.flatMap(r => r.permissions)}
-            }).populate({
-                path: "children",
-                populate: { path: "children" }
-            })
-
-            const effectivePermissions = new Set()
-            for (const perm of rolePermissions) {
-                gatherChildren(perm, effectivePermissions)
-            }
-
-            const missing = codes.filter(code => !effectivePermissions.has(code))
-            if (missing.length > 0) {
-                return res.status(403).json({error: "Access Denied"})
-            }
-
-            next()
-
-        } catch (e) {
-            console.error('Error occured while gathering permissions and matching with role, e')
-            return res.status(500).json({error: "Internal error"})
-        }
+export function requiresPermission(codes) {
+  return (req, res, next) => {
+    if (!req.auth) {
+      return res.status(401).json({ error: "Unauthorized" });
     }
+
+    const required = Array.isArray(codes) ? codes : [codes];
+
+    // Bypass for SUPER admin
+    if (req.auth.systemLevel === "SUPER") {
+      return next();
+    }
+
+    // ADMIN special handling for permission management
+    if (req.auth.systemLevel === "ADMIN") {
+      // Hard deny for create/update/delete/write regardless of assigned perms
+      if (required.some((c) => ADMIN_PERMISSION_DENY.has(c))) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      // Allow read of permission domain
+      if (required.every((c) => c === "permission:read")) {
+        return next();
+      }
+
+      // For any other permission:* operation, deny by default
+      if (required.some((c) => isPermissionDomain(c))) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      // For all non-permission domains, ADMIN bypasses (as per your rule)
+      return next();
+    }
+
+    // Normal permission enforcement for non-admin users
+    const perms = req.effectivePermissions;
+    if (!perms || typeof perms.has !== "function") {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    console.log("####### User permissions:", Array.from(perms));
+    console.log("####### code:", required);
+    const hasAll = required.every((code) => perms.has(code));
+    if (!hasAll) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    return next();
+  };
 }
+
+export default requiresPermission;

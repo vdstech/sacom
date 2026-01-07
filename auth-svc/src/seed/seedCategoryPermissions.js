@@ -1,8 +1,5 @@
-const PermissionModule = require("../auth/models/permissionModel.js");
-const RoleModule = require("../auth/models/roleModel.js");
-
-const Permission = PermissionModule.default || PermissionModule;
-const Role = RoleModule.default || RoleModule;
+import Permission from "../auth/models/permissionModel.js";
+import Role from "../auth/models/roleModel.js";
 
 async function upsertPermission(doc) {
   return Permission.findOneAndUpdate(
@@ -23,13 +20,13 @@ async function addPermsToRole(roleName, permIds) {
   await role.save();
 }
 
-async function seedCategoryPermissions() {
+export async function seedCategoryPermissions() {
   const leafDefs = [
-    { code: "category:read", description: "View category list/tree/details" },
-    { code: "category:write", description: "Create/update categories" },
-    { code: "category:delete", description: "Delete categories" },
-    { code: "category:publish", description: "Enable/disable categories" },
-    { code: "category:reorder", description: "Move/reorder in category tree" },
+    { code: "nav:read", description: "View nav list/tree/details" },
+    { code: "nav:write", description: "Create/update nav" },
+    { code: "nav:delete", description: "Delete nav" },
+    { code: "nav:publish", description: "Enable/disable nav" },
+    { code: "nav:reorder", description: "Move/reorder in nav tree" },
   ];
 
   const leafPerms = [];
@@ -39,23 +36,19 @@ async function seedCategoryPermissions() {
   }
 
   const groupPerm = await upsertPermission({
-    code: "category",
-    description: "All category permissions",
+    code: "nav:all",
+    description: "All nav permissions",
     children: leafPerms.map((p) => p._id),
   });
 
-  // keep children synced
   await Permission.updateOne(
     { _id: groupPerm._id },
     { $set: { children: leafPerms.map((p) => p._id) } }
   );
 
-  // grant to roles
   const leafIds = leafPerms.map((p) => p._id);
   await addPermsToRole("SUPER_ADMIN", leafIds);
   await addPermsToRole("ADMIN", leafIds);
 
   console.log("✅ Category permissions seeded:", leafDefs.map((x) => x.code));
 }
-
-module.exports = { seedCategoryPermissions };

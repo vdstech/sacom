@@ -1,8 +1,7 @@
-module.exports = function buildTree(categories) {
+export default function buildTree(categories) {
   const map = new Map();
   const roots = [];
 
-  // clone nodes with children container
   for (const c of categories) {
     map.set(String(c._id), { ...c, children: [] });
   }
@@ -12,13 +11,12 @@ module.exports = function buildTree(categories) {
     if (c.parentId) {
       const parent = map.get(String(c.parentId));
       if (parent) parent.children.push(node);
-      else roots.push(node); // parent missing -> treat as root
+      else roots.push(node);
     } else {
       roots.push(node);
     }
   }
 
-  // sort children recursively by sortOrder
   const sortRec = (nodes) => {
     nodes.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     nodes.forEach((n) => sortRec(n.children));
@@ -26,4 +24,4 @@ module.exports = function buildTree(categories) {
   sortRec(roots);
 
   return roots;
-};
+}

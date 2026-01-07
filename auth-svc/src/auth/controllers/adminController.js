@@ -1,9 +1,19 @@
+import mongoose from "mongoose";
 import Role from "../models/roleModel.js";
 import User from "../models/userModel.js";
 import { hashPassword } from "../../security/password.js";
 
 export const createUser = async (req, res) => {
-  const { email, name, roles, password } = req.body;
+  const { email, name, roles, password, systemLevel: requestedSystemLevel, isSystemUser: requestedIsSystemUser } =
+    req.body;
+
+  console.log("####### req.body:", req.body);
+  console.log("####### req.body.roles:", roles);
+  try {
+    // no-op: casting happens later; this try/catch is just to keep structure clear
+  } catch (e) {
+    return res.status(400).json({ error: e.message || "Invalid role id" });
+  }
 
   const exists = await User.findOne({ email });
   if (exists) {
@@ -15,10 +25,47 @@ export const createUser = async (req, res) => {
     return res.status(403).json({ error: "SUPER_ADMIN user cannot be created or assigned via API" });
   }
 
-  const roleDocs = await Role.find({ _id: { $in: roles } });
+  // Helpful debug: confirm which collection the Role model is reading from
+  console.log("####### Role collection:", Role.collection?.name);
+
+  let roleObjectIds;
+  try {
+    roleObjectIds = (roles || []).map((id) => {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new Error(`Invalid role id: ${id}`);
+      }
+      return new mongoose.Types.ObjectId(id);
+    });
+  } catch (e) {
+    return res.status(400).json({ error: e.message || "Invalid role id" });
+  }
+
+  const roleDocs = await Role.find({ _id: { $in: roleObjectIds } });
   // validator already checked basic shape; double-check roles actually exist
+
+  console.log("####### roleDocs:", roleDocs);
+  console.log("####### roles:", roles);
   if (roleDocs.length !== roles.length) {
     return res.status(400).json({ error: "invalid role(s)" });
+  }
+
+  const systemLevels = ["NONE", "ADMIN", "SUPER"];
+  const derivedSystemLevel =
+    roleDocs
+      .map((r) => systemLevels.indexOf(r.systemLevel || "NONE"))
+      .filter((idx) => idx >= 0)
+      .reduce((max, idx) => Math.max(max, idx), 0) || 0;
+  const systemLevel = systemLevels[derivedSystemLevel] || "NONE";
+  const isSystemUser = roleDocs.some((r) => r.isSystemRole || r.systemLevel === "ADMIN" || r.systemLevel === "SUPER");
+
+  if (requestedSystemLevel !== undefined || requestedIsSystemUser !== undefined) {
+    const allowFlags = isSystemUser;
+    const matchesDerived =
+      (requestedSystemLevel === undefined || requestedSystemLevel === systemLevel) &&
+      (requestedIsSystemUser === undefined || requestedIsSystemUser === isSystemUser);
+    if (!allowFlags || !matchesDerived) {
+      return res.status(400).json({ error: "system flags can only be set for admin roles" });
+    }
   }
 
   const passwordHash = await hashPassword(password);
@@ -27,6 +74,8 @@ export const createUser = async (req, res) => {
     name,
     roles: roleDocs.map((r) => r._id),
     passwordHash,
+    systemLevel,
+    isSystemUser,
     // for future: passwordExpiresAt: new Date(Date.now() + N days)
   });
 

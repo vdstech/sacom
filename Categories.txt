@@ -1,0 +1,104 @@
+Category
+=====================
+
+category:read (694fe04f4af789fbf2fc1d1b)
+category:write (694fe0654af789fbf2fc1d20)
+category:delete (694fe0734af789fbf2fc1d25)
+category:all (694fe0b54af789fbf2fc1d2b)
+
+
+{ "name": "HOME", "slug": "home", "parent": null, "sortOrder": 10, "isActive": true }
+{ "name": "NEW ARRIVALS", "slug": "new-arrivals", "parent": null, "sortOrder": 20, "isActive": true }
+
+
+{ "name": "SAREES", "slug": "sarees", "parent": null, "sortOrder": 30, "isActive": true }
+{ "name": "Plain Sarees", "slug": "plain-sarees", "parent": "{{SAREES_ID}}", "sortOrder": 10, "isActive": true }
+{ "name": "Printed Sarees", "slug": "printed-sarees", "parent": "{{SAREES_ID}}", "sortOrder": 20, "isActive": true }
+{ "name": "Designer Sarees", "slug": "designer-sarees", "parent": "{{SAREES_ID}}", "sortOrder": 30, "isActive": true }
+{ "name": "Pattu Sarees", "slug": "pattu-sarees", "parent": "{{SAREES_ID}}", "sortOrder": 40, "isActive": true }
+{ "name": "Fancy Sarees", "slug": "fancy-sarees", "parent": "{{SAREES_ID}}", "sortOrder": 50, "isActive": true }
+{ "name": "Cotton Sarees", "slug": "cotton-sarees", "parent": "{{SAREES_ID}}", "sortOrder": 60, "isActive": true }
+{ "name": "Fancy Silk Sarees", "slug": "fancy-silk-sarees", "parent": "{{SAREES_ID}}", "sortOrder": 70, "isActive": true }
+
+
+
+{ "name": "GARDEN VARELI", "slug": "garden-vareli", "parent": null, "sortOrder": 40, "isActive": true }
+{ "name": "Plain Nara Chiffon", "slug": "plain-nara-chiffon", "parent": "{{GARDEN_VARELI_ID}}", "sortOrder": 10, "isActive": true }
+{ "name": "Nara Chiffon", "slug": "nara-chiffon", "parent": "{{GARDEN_VARELI_ID}}", "sortOrder": 20, "isActive": true }
+{ "name": "Super Nara Chiffon", "slug": "super-nara-chiffon", "parent": "{{GARDEN_VARELI_ID}}", "sortOrder": 30, "isActive": true }
+{ "name": "American Chiffon", "slug": "american-chiffon", "parent": "{{GARDEN_VARELI_ID}}", "sortOrder": 40, "isActive": true }
+{ "name": "Georgette", "slug": "georgette", "parent": "{{GARDEN_VARELI_ID}}", "sortOrder": 50, "isActive": true }
+{ "name": "Lentus", "slug": "lentus", "parent": "{{GARDEN_VARELI_ID}}", "sortOrder": 60, "isActive": true }
+{ "name": "Summer Roganza", "slug": "summer-roganza", "parent": "{{GARDEN_VARELI_ID}}", "sortOrder": 70, "isActive": true }
+{ "name": "Crepe", "slug": "crepe", "parent": "{{GARDEN_VARELI_ID}}", "sortOrder": 80, "isActive": true }
+{ "name": "Brasso", "slug": "brasso", "parent": "{{GARDEN_VARELI_ID}}", "sortOrder": 90, "isActive": true }
+{ "name": "Other Garden Sarees", "slug": "other-garden-sarees", "parent": "{{GARDEN_VARELI_ID}}", "sortOrder": 100, "isActive": true }
+
+
+
+{ "name": "DIGITAL PRINTS", "slug": "digital-prints", "parent": null, "sortOrder": 50, "isActive": true }
+{ "name": "Digital Chiffon Prints", "slug": "digital-chiffon-prints", "parent": "{{DIGITAL_PRINTS_ID}}", "sortOrder": 10, "isActive": true }
+{ "name": "Digital Georgette Prints", "slug": "digital-georgette-prints", "parent": "{{DIGITAL_PRINTS_ID}}", "sortOrder": 20, "isActive": true }
+{ "name": "Digital Crepe Prints", "slug": "digital-crepe-prints", "parent": "{{DIGITAL_PRINTS_ID}}", "sortOrder": 30, "isActive": true }
+{ "name": "Digital Satin Crepe", "slug": "digital-satin-crepe", "parent": "{{DIGITAL_PRINTS_ID}}", "sortOrder": 40, "isActive": true }
+{ "name": "Digital Satin Georgette", "slug": "digital-satin-georgette", "parent": "{{DIGITAL_PRINTS_ID}}", "sortOrder": 50, "isActive": true }
+
+
+{ "name": "JEWELLERY", "slug": "jewellery", "parent": null, "sortOrder": 60, "isActive": true }
+{ "name": "Mangalsutra", "slug": "mangalsutra", "parent": "{{JEWELLERY_ID}}", "sortOrder": 10, "isActive": true }
+{ "name": "Necklace Sets", "slug": "necklace-sets", "parent": "{{JEWELLERY_ID}}", "sortOrder": 20, "isActive": true }
+{ "name": "Bangles", "slug": "bangles", "parent": "{{JEWELLERY_ID}}", "sortOrder": 30, "isActive": true }
+{ "name": "Ear Rings", "slug": "ear-rings", "parent": "{{JEWELLERY_ID}}", "sortOrder": 40, "isActive": true }
+{ "name": "Pendants", "slug": "pendants", "parent": "{{JEWELLERY_ID}}", "sortOrder": 50, "isActive": true }
+{ "name": "Idols", "slug": "idols", "parent": "{{JEWELLERY_ID}}", "sortOrder": 60, "isActive": true }
+{ "name": "Other Jewellery", "slug": "other-jewellery", "parent": "{{JEWELLERY_ID}}", "sortOrder": 70, "isActive": true }
+{ "name": "Mangtikka", "slug": "mangtikka", "parent": "{{OTHER_JEWELLERY_ID}}", "sortOrder": 10, "isActive": true }
+{ "name": "Waist Belts", "slug": "waist-belts", "parent": "{{OTHER_JEWELLERY_ID}}", "sortOrder": 20, "isActive": true }
+{ "name": "Beads", "slug": "beads", "parent": "{{OTHER_JEWELLERY_ID}}", "sortOrder": 30, "isActive": true }
+{ "name": "Hair Jewellery", "slug": "hair-jewellery", "parent": "{{OTHER_JEWELLERY_ID}}", "sortOrder": 40, "isActive": true }
+{ "name": "Accessories", "slug": "accessories", "parent": "{{	}}", "sortOrder": 50, "isActive": true }
+
+
+
+{ "name": "BLOUSE", "slug": "blouse", "parent": null, "sortOrder": 70, "isActive": true }
+{ "name": "DUPATTA", "slug": "dupatta", "parent": null, "sortOrder": 80, "isActive": true }
+{ "name": "SAREE BELT", "slug": "saree-belt", "parent": null, "sortOrder": 90, "isActive": true }
+
+{ "name": "SALE", "slug": "sale", "parent": null, "sortOrder": 100, "isActive": true }
+{ "name": "Half Price Store", "slug": "half-price-store", "parent": "{{SALE_ID}}", "sortOrder": 10, "isActive": true }
+
+
+
+============================
+product:read (695007763555d2bd4708a8cc)
+product:write (6950077f3555d2bd4708a8d1)
+product:delete (695007863555d2bd4708a8d6)
+
+
+pricing:write (695007e53555d2bd4708a8e3)
+
+inventory:read (695008003555d2bd4708a8e9)
+inventory:write (stock adjust / upsert) (6950080b3555d2bd4708a8ee)
+
+catalog:all(6950085c3555d2bd4708a8f6	)
+
+================================
+
+{ "name":"Sarees", "slug":"sarees", "categoryId":"<ROOT_SAREES_CATEGORY_ID>", "parentId":null, "order":20 }
+{ "name":"New Arrivals", "slug":"new-arrivals", "path":"/collections/new-arrivals", "parentId":null, "order":10 }
+
+
+{ "name":"Home", "slug":"Home", "path":"/", "parentId":null}
+{ "name":"New Arrivals", "slug":"New Arrivals", "path":"/", "parentId":null}
+
+{ "name":"Sarees", "slug":"sarees", "path":"/", "parentId":null, "categoryId": "694fe4054af789fbf2fc1d49"}
+{ "name":"Plain Sarees", "slug":"plain sarees", "path":"/", "parentId":"69510508ff0da92af9dfae7e", "categoryId": "694fe42f4af789fbf2fc1d4c"}
+{ "name":"Printed Sarees", "slug":"printed sarees", "path":"/", "parentId":"69510508ff0da92af9dfae7e", "categoryId": "694fe44f4af789fbf2fc1d55"}
+{ "name":"Designer Sarees", "slug":"designer sarees", "path":"/", "parentId":"69510508ff0da92af9dfae7e", "categoryId": "694fe4584af789fbf2fc1d59"}
+{ "name":"Pattu Sarees", "slug":"pattu sarees", "path":"/", "parentId":"69510508ff0da92af9dfae7e", "categoryId": "694fe4614af789fbf2fc1d5d"}
+{ "name":"Fancy Sarees", "slug":"fancy sarees", "path":"/", "parentId":"69510508ff0da92af9dfae7e", "categoryId": "694fe4694af789fbf2fc1d61"}
+{ "name":"Cotton Sarees", "slug":"cotton sarees", "path":"/", "parentId":"69510508ff0da92af9dfae7e", "categoryId": "694fe4724af789fbf2fc1d65"}
+{ "name":"Fancy Sarees", "slug":"fancy sarees", "path":"/", "parentId":"69510508ff0da92af9dfae7e", "categoryId": "694fe47a4af789fbf2fc1d69"}
+
+
+

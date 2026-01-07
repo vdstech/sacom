@@ -1,15 +1,14 @@
-require("dotenv").config();
-const mongoose = require("mongoose");
-
-const { seedCategoryPermissions } = require("./seedCategoryPermissions");
-const { seedRoleUsers } = require("./seedRolesUsers");
+import "dotenv/config";
+import mongoose from "mongoose";
+import { seedCategoryPermissions } from "./seedCategoryPermissions.js";
+import { seedRoleUsers } from "./seedRolesUsers.js";
+import { fileURLToPath } from "url";
 
 async function main() {
   if (!process.env.MONGO_URI) throw new Error("MONGO_URI missing in env");
 
   await mongoose.connect(process.env.MONGO_URI);
 
-  // Order: permissions first, then users (since users may need roles already having perms)
   await seedCategoryPermissions();
   await seedRoleUsers();
 
@@ -17,7 +16,7 @@ async function main() {
   await mongoose.disconnect();
 }
 
-if (require.main === module) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main().catch(async (e) => {
     console.error("❌ Seed failed:", e);
     try { await mongoose.disconnect(); } catch {}

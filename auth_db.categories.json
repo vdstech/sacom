@@ -1,0 +1,1575 @@
+[{
+  "_id": {
+    "$oid": "694fe3ea4af789fbf2fc1d41"
+  },
+  "name": "HOME",
+  "slug": "home",
+  "description": "",
+  "parent": null,
+  "ancestors": [],
+  "level": 0,
+  "path": "home",
+  "sortOrder": 10,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fdf8c4af789fbf2fc1d0a"
+  },
+  "updatedBy": {
+    "$oid": "694fdf8c4af789fbf2fc1d0a"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:49:30.275Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:49:30.275Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe3f84af789fbf2fc1d45"
+  },
+  "name": "NEW ARRIVALS",
+  "slug": "new-arrivals",
+  "description": "",
+  "parent": null,
+  "ancestors": [],
+  "level": 0,
+  "path": "new-arrivals",
+  "sortOrder": 20,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:49:44.975Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:49:44.975Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4054af789fbf2fc1d49"
+  },
+  "name": "SAREES",
+  "slug": "sarees",
+  "description": "",
+  "parent": null,
+  "ancestors": [],
+  "level": 0,
+  "path": "sarees",
+  "sortOrder": 30,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:49:57.013Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:49:57.013Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe42f4af789fbf2fc1d4c"
+  },
+  "name": "Plain Sarees",
+  "slug": "plain-sarees",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4054af789fbf2fc1d49"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4054af789fbf2fc1d49"
+    }
+  ],
+  "level": 1,
+  "path": "sarees/plain-sarees",
+  "sortOrder": 10,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:50:39.485Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:50:39.485Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe44f4af789fbf2fc1d55"
+  },
+  "name": "Printed Sarees",
+  "slug": "printed-sarees",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4054af789fbf2fc1d49"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4054af789fbf2fc1d49"
+    }
+  ],
+  "level": 1,
+  "path": "sarees/printed-sarees",
+  "sortOrder": 20,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:51:11.757Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:51:11.757Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4584af789fbf2fc1d59"
+  },
+  "name": "Designer Sarees",
+  "slug": "designer-sarees",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4054af789fbf2fc1d49"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4054af789fbf2fc1d49"
+    }
+  ],
+  "level": 1,
+  "path": "sarees/designer-sarees",
+  "sortOrder": 30,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:51:20.259Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:51:20.259Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4614af789fbf2fc1d5d"
+  },
+  "name": "Pattu Sarees",
+  "slug": "pattu-sarees",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4054af789fbf2fc1d49"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4054af789fbf2fc1d49"
+    }
+  ],
+  "level": 1,
+  "path": "sarees/pattu-sarees",
+  "sortOrder": 40,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:51:29.413Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:51:29.413Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4694af789fbf2fc1d61"
+  },
+  "name": "Fancy Sarees",
+  "slug": "fancy-sarees",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4054af789fbf2fc1d49"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4054af789fbf2fc1d49"
+    }
+  ],
+  "level": 1,
+  "path": "sarees/fancy-sarees",
+  "sortOrder": 50,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:51:37.682Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:51:37.682Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4724af789fbf2fc1d65"
+  },
+  "name": "Cotton Sarees",
+  "slug": "cotton-sarees",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4054af789fbf2fc1d49"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4054af789fbf2fc1d49"
+    }
+  ],
+  "level": 1,
+  "path": "sarees/cotton-sarees",
+  "sortOrder": 60,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:51:46.229Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:51:46.229Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe47a4af789fbf2fc1d69"
+  },
+  "name": "Fancy Silk Sarees",
+  "slug": "fancy-silk-sarees",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4054af789fbf2fc1d49"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4054af789fbf2fc1d49"
+    }
+  ],
+  "level": 1,
+  "path": "sarees/fancy-silk-sarees",
+  "sortOrder": 70,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:51:54.961Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:51:54.961Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4854af789fbf2fc1d6d"
+  },
+  "name": "GARDEN VARELI",
+  "slug": "garden-vareli",
+  "description": "",
+  "parent": null,
+  "ancestors": [],
+  "level": 0,
+  "path": "garden-vareli",
+  "sortOrder": 40,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:52:05.889Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:52:05.889Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4c34af789fbf2fc1d71"
+  },
+  "name": "Plain Nara Chiffon",
+  "slug": "plain-nara-chiffon",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4854af789fbf2fc1d6d"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4854af789fbf2fc1d6d"
+    }
+  ],
+  "level": 1,
+  "path": "garden-vareli/plain-nara-chiffon",
+  "sortOrder": 10,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:53:07.280Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:53:07.280Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4ca4af789fbf2fc1d76"
+  },
+  "name": "Nara Chiffon",
+  "slug": "nara-chiffon",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4854af789fbf2fc1d6d"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4854af789fbf2fc1d6d"
+    }
+  ],
+  "level": 1,
+  "path": "garden-vareli/nara-chiffon",
+  "sortOrder": 20,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:53:14.997Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:53:14.997Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4d04af789fbf2fc1d7a"
+  },
+  "name": "Super Nara Chiffon",
+  "slug": "super-nara-chiffon",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4854af789fbf2fc1d6d"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4854af789fbf2fc1d6d"
+    }
+  ],
+  "level": 1,
+  "path": "garden-vareli/super-nara-chiffon",
+  "sortOrder": 30,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:53:20.899Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:53:20.899Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4d74af789fbf2fc1d7e"
+  },
+  "name": "American Chiffon",
+  "slug": "american-chiffon",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4854af789fbf2fc1d6d"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4854af789fbf2fc1d6d"
+    }
+  ],
+  "level": 1,
+  "path": "garden-vareli/american-chiffon",
+  "sortOrder": 40,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:53:27.485Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:53:27.485Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4de4af789fbf2fc1d82"
+  },
+  "name": "Georgette",
+  "slug": "georgette",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4854af789fbf2fc1d6d"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4854af789fbf2fc1d6d"
+    }
+  ],
+  "level": 1,
+  "path": "garden-vareli/georgette",
+  "sortOrder": 50,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:53:34.464Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:53:34.464Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4e44af789fbf2fc1d86"
+  },
+  "name": "Lentus",
+  "slug": "lentus",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4854af789fbf2fc1d6d"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4854af789fbf2fc1d6d"
+    }
+  ],
+  "level": 1,
+  "path": "garden-vareli/lentus",
+  "sortOrder": 60,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:53:40.284Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:53:40.284Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4ea4af789fbf2fc1d8a"
+  },
+  "name": "Summer Roganza",
+  "slug": "summer-roganza",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4854af789fbf2fc1d6d"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4854af789fbf2fc1d6d"
+    }
+  ],
+  "level": 1,
+  "path": "garden-vareli/summer-roganza",
+  "sortOrder": 70,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:53:46.028Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:53:46.028Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4ef4af789fbf2fc1d8e"
+  },
+  "name": "Crepe",
+  "slug": "crepe",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4854af789fbf2fc1d6d"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4854af789fbf2fc1d6d"
+    }
+  ],
+  "level": 1,
+  "path": "garden-vareli/crepe",
+  "sortOrder": 80,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:53:51.960Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:53:51.960Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4f44af789fbf2fc1d92"
+  },
+  "name": "Brasso",
+  "slug": "brasso",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4854af789fbf2fc1d6d"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4854af789fbf2fc1d6d"
+    }
+  ],
+  "level": 1,
+  "path": "garden-vareli/brasso",
+  "sortOrder": 90,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:53:56.979Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:53:56.979Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe4fa4af789fbf2fc1d96"
+  },
+  "name": "Other Garden Sarees",
+  "slug": "other-garden-sarees",
+  "description": "",
+  "parent": {
+    "$oid": "694fe4854af789fbf2fc1d6d"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe4854af789fbf2fc1d6d"
+    }
+  ],
+  "level": 1,
+  "path": "garden-vareli/other-garden-sarees",
+  "sortOrder": 100,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:54:02.227Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:54:02.227Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5054af789fbf2fc1d9a"
+  },
+  "name": "DIGITAL PRINTS",
+  "slug": "digital-prints",
+  "description": "",
+  "parent": null,
+  "ancestors": [],
+  "level": 0,
+  "path": "digital-prints",
+  "sortOrder": 50,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:54:13.050Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:54:13.050Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe55b4af789fbf2fc1d9f"
+  },
+  "name": "Digital Chiffon Prints",
+  "slug": "digital-chiffon-prints",
+  "description": "",
+  "parent": {
+    "$oid": "694fe5054af789fbf2fc1d9a"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe5054af789fbf2fc1d9a"
+    }
+  ],
+  "level": 1,
+  "path": "digital-prints/digital-chiffon-prints",
+  "sortOrder": 10,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:55:39.209Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:55:39.209Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5614af789fbf2fc1da4"
+  },
+  "name": "Digital Georgette Prints",
+  "slug": "digital-georgette-prints",
+  "description": "",
+  "parent": {
+    "$oid": "694fe5054af789fbf2fc1d9a"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe5054af789fbf2fc1d9a"
+    }
+  ],
+  "level": 1,
+  "path": "digital-prints/digital-georgette-prints",
+  "sortOrder": 20,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:55:45.158Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:55:45.158Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5644af789fbf2fc1da8"
+  },
+  "name": "Digital Crepe Prints",
+  "slug": "digital-crepe-prints",
+  "description": "",
+  "parent": {
+    "$oid": "694fe5054af789fbf2fc1d9a"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe5054af789fbf2fc1d9a"
+    }
+  ],
+  "level": 1,
+  "path": "digital-prints/digital-crepe-prints",
+  "sortOrder": 30,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:55:48.940Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:55:48.940Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe56a4af789fbf2fc1dac"
+  },
+  "name": "Digital Satin Crepe",
+  "slug": "digital-satin-crepe",
+  "description": "",
+  "parent": {
+    "$oid": "694fe5054af789fbf2fc1d9a"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe5054af789fbf2fc1d9a"
+    }
+  ],
+  "level": 1,
+  "path": "digital-prints/digital-satin-crepe",
+  "sortOrder": 40,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:55:54.239Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:55:54.239Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe56e4af789fbf2fc1db0"
+  },
+  "name": "Digital Satin Georgette",
+  "slug": "digital-satin-georgette",
+  "description": "",
+  "parent": {
+    "$oid": "694fe5054af789fbf2fc1d9a"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe5054af789fbf2fc1d9a"
+    }
+  ],
+  "level": 1,
+  "path": "digital-prints/digital-satin-georgette",
+  "sortOrder": 50,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:55:58.104Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:55:58.104Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe57d4af789fbf2fc1db4"
+  },
+  "name": "JEWELLERY",
+  "slug": "jewellery",
+  "description": "",
+  "parent": null,
+  "ancestors": [],
+  "level": 0,
+  "path": "jewellery",
+  "sortOrder": 60,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:56:13.445Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:56:13.445Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5af4af789fbf2fc1db7"
+  },
+  "name": "Mangalsutra",
+  "slug": "mangalsutra",
+  "description": "",
+  "parent": {
+    "$oid": "694fe57d4af789fbf2fc1db4"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    }
+  ],
+  "level": 1,
+  "path": "jewellery/mangalsutra",
+  "sortOrder": 10,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:57:03.927Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:57:03.927Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5b54af789fbf2fc1dbc"
+  },
+  "name": "Necklace Sets",
+  "slug": "necklace-sets",
+  "description": "",
+  "parent": {
+    "$oid": "694fe57d4af789fbf2fc1db4"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    }
+  ],
+  "level": 1,
+  "path": "jewellery/necklace-sets",
+  "sortOrder": 20,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:57:09.741Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:57:09.741Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5b94af789fbf2fc1dc0"
+  },
+  "name": "Bangles",
+  "slug": "bangles",
+  "description": "",
+  "parent": {
+    "$oid": "694fe57d4af789fbf2fc1db4"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    }
+  ],
+  "level": 1,
+  "path": "jewellery/bangles",
+  "sortOrder": 30,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:57:13.553Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:57:13.553Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5bd4af789fbf2fc1dc4"
+  },
+  "name": "Ear Rings",
+  "slug": "ear-rings",
+  "description": "",
+  "parent": {
+    "$oid": "694fe57d4af789fbf2fc1db4"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    }
+  ],
+  "level": 1,
+  "path": "jewellery/ear-rings",
+  "sortOrder": 40,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:57:17.231Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:57:17.231Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5c04af789fbf2fc1dc8"
+  },
+  "name": "Pendants",
+  "slug": "pendants",
+  "description": "",
+  "parent": {
+    "$oid": "694fe57d4af789fbf2fc1db4"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    }
+  ],
+  "level": 1,
+  "path": "jewellery/pendants",
+  "sortOrder": 50,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:57:20.679Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:57:20.679Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5c34af789fbf2fc1dcc"
+  },
+  "name": "Idols",
+  "slug": "idols",
+  "description": "",
+  "parent": {
+    "$oid": "694fe57d4af789fbf2fc1db4"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    }
+  ],
+  "level": 1,
+  "path": "jewellery/idols",
+  "sortOrder": 60,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:57:23.917Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:57:23.917Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5c74af789fbf2fc1dd0"
+  },
+  "name": "Other Jewellery",
+  "slug": "other-jewellery",
+  "description": "",
+  "parent": {
+    "$oid": "694fe57d4af789fbf2fc1db4"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    }
+  ],
+  "level": 1,
+  "path": "jewellery/other-jewellery",
+  "sortOrder": 70,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:57:27.208Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:57:27.208Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5f34af789fbf2fc1dd4"
+  },
+  "name": "Mangtikka",
+  "slug": "mangtikka",
+  "description": "",
+  "parent": {
+    "$oid": "694fe5c74af789fbf2fc1dd0"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    },
+    {
+      "$oid": "694fe5c74af789fbf2fc1dd0"
+    }
+  ],
+  "level": 2,
+  "path": "jewellery/other-jewellery/mangtikka",
+  "sortOrder": 10,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:58:11.426Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:58:11.426Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5fb4af789fbf2fc1dd9"
+  },
+  "name": "Waist Belts",
+  "slug": "waist-belts",
+  "description": "",
+  "parent": {
+    "$oid": "694fe5c74af789fbf2fc1dd0"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    },
+    {
+      "$oid": "694fe5c74af789fbf2fc1dd0"
+    }
+  ],
+  "level": 2,
+  "path": "jewellery/other-jewellery/waist-belts",
+  "sortOrder": 20,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:58:19.900Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:58:19.900Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe5ff4af789fbf2fc1ddd"
+  },
+  "name": "Beads",
+  "slug": "beads",
+  "description": "",
+  "parent": {
+    "$oid": "694fe5c74af789fbf2fc1dd0"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    },
+    {
+      "$oid": "694fe5c74af789fbf2fc1dd0"
+    }
+  ],
+  "level": 2,
+  "path": "jewellery/other-jewellery/beads",
+  "sortOrder": 30,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:58:23.395Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:58:23.395Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe6034af789fbf2fc1de1"
+  },
+  "name": "Hair Jewellery",
+  "slug": "hair-jewellery",
+  "description": "",
+  "parent": {
+    "$oid": "694fe5c74af789fbf2fc1dd0"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    },
+    {
+      "$oid": "694fe5c74af789fbf2fc1dd0"
+    }
+  ],
+  "level": 2,
+  "path": "jewellery/other-jewellery/hair-jewellery",
+  "sortOrder": 40,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:58:27.098Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:58:27.098Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe6064af789fbf2fc1de5"
+  },
+  "name": "Accessories",
+  "slug": "accessories",
+  "description": "",
+  "parent": {
+    "$oid": "694fe5c74af789fbf2fc1dd0"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe57d4af789fbf2fc1db4"
+    },
+    {
+      "$oid": "694fe5c74af789fbf2fc1dd0"
+    }
+  ],
+  "level": 2,
+  "path": "jewellery/other-jewellery/accessories",
+  "sortOrder": 50,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:58:30.446Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:58:30.446Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe6144af789fbf2fc1de9"
+  },
+  "name": "BLOUSE",
+  "slug": "blouse",
+  "description": "",
+  "parent": null,
+  "ancestors": [],
+  "level": 0,
+  "path": "blouse",
+  "sortOrder": 70,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:58:44.135Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:58:44.135Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe61d4af789fbf2fc1dec"
+  },
+  "name": "DUPATTA",
+  "slug": "dupatta",
+  "description": "",
+  "parent": null,
+  "ancestors": [],
+  "level": 0,
+  "path": "dupatta",
+  "sortOrder": 80,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:58:53.364Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:58:53.364Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe6244af789fbf2fc1def"
+  },
+  "name": "SAREE BELT",
+  "slug": "saree-belt",
+  "description": "",
+  "parent": null,
+  "ancestors": [],
+  "level": 0,
+  "path": "saree-belt",
+  "sortOrder": 90,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:59:00.797Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:59:00.797Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe63f4af789fbf2fc1df2"
+  },
+  "name": "SALE",
+  "slug": "sale",
+  "description": "",
+  "parent": null,
+  "ancestors": [],
+  "level": 0,
+  "path": "sale",
+  "sortOrder": 100,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:59:27.902Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:59:27.902Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "694fe6534af789fbf2fc1df6"
+  },
+  "name": "Half Price Store",
+  "slug": "half-price-store",
+  "description": "",
+  "parent": {
+    "$oid": "694fe63f4af789fbf2fc1df2"
+  },
+  "ancestors": [
+    {
+      "$oid": "694fe63f4af789fbf2fc1df2"
+    }
+  ],
+  "level": 1,
+  "path": "sale/half-price-store",
+  "sortOrder": 10,
+  "isActive": true,
+  "imageUrl": "",
+  "seoTitle": "",
+  "seoDescription": "",
+  "createdBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "updatedBy": {
+    "$oid": "694fe1254af789fbf2fc1d37"
+  },
+  "createdAt": {
+    "$date": "2025-12-27T13:59:47.127Z"
+  },
+  "updatedAt": {
+    "$date": "2025-12-27T13:59:47.127Z"
+  },
+  "__v": 0
+}]

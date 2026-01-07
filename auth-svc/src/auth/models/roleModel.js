@@ -25,7 +25,7 @@ const RoleSchema = new mongoose.Schema({
         enum: ["NONE", "ADMIN", "SUPER"],
         default: "NONE"
   }
-}, { timestamps: true})
+}, { timestamps: true, collection: "backend_roles"})
 
 RoleSchema.index({name: 1})
 
