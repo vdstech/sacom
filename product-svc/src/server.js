@@ -8,7 +8,8 @@ import {getTlsOptions} from './tls.js'
 import https from 'https'
 import http from 'http'
 import cors from "cors";
-import productRoutes from "./product/product.routes.js";
+import adminProductRoutes from "./product/product.admin.routes.js";
+import storefrontProductRoutes from "./product/product.storefront.routes.js";
 
 const app = express()
 
@@ -48,7 +49,8 @@ app.use(cors(corsOptions));
 // preflight for all routes
 app.options(/.*/, cors(corsOptions)); 
 
-app.use("/products", productRoutes);
+app.use("/", storefrontProductRoutes);
+app.use("/admin/products", adminProductRoutes);
 
 app.get('/health', (req, res) => {
     res.json({ok: true, service: 'product-svc', time: new Date().toISOString()})
