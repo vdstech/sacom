@@ -1,0 +1,28 @@
+{
+  "name": "gateway-svc",
+  "version": "0.0.1",
+  "description": "API gateway for sacom",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "keywords": [
+    "gateway"
+  ],
+  "author": "Karunakar",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "http-proxy-middleware": "^3.0.5",
+    "pino": "^10.1.0",
+    "pino-http": "^11.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
