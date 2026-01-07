@@ -1,5 +1,5 @@
 import NavItem from "./navigation.model.js";
-import Category from "../categories/category.model.js"; // adjust if needed
+import Category from "./category.model.js";
 
 // IMPORTANT: match your frontend category route
 const CATEGORY_PREFIX = "/c"; // or "/collections"

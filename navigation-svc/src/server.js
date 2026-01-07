@@ -8,12 +8,8 @@ import {getTlsOptions} from './tls.js'
 import https from 'https'
 import http from 'http'
 import cors from "cors";
-import rolesRouter from './auth/routes/roleRoute.js'
-import adminUsers from './auth/routes/adminRoute.js'
-import meRouter from './auth/routes/meRoute.js'
-import authRouter from './auth/routes/authRoute.js';
-import sessionRouter from './auth/routes/sessionRoute.js'
-import permissionRouter from './auth/routes/permissionsRoute.js'
+import navRoutes from "./navigation/navigation.routes.store.js";
+import navAdminRoutes from "./navigation/navigation.routes.admin.js";
 
 const app = express()
 
@@ -29,7 +25,7 @@ app.use(helmet.hsts({
     preload: true
 }))
 
-const logger = pino({base: {service: 'auth-svc'}})
+const logger = pino({base: {service: 'navigation-svc'}})
 app.use(pinoHttp({logger}))
 app.use(express.json({limit: '200kb'}))
 
@@ -53,36 +49,31 @@ app.use(cors(corsOptions));
 // preflight for all routes
 app.options(/.*/, cors(corsOptions)); 
 
-
-app.use('/api/admin/roles', rolesRouter)
-app.use('/api/admin/users', adminUsers)
-app.use('/api/', meRouter)
-app.use('/', authRouter)
-app.use('/auth/session', sessionRouter)
-app.use('/api/admin/permissions', permissionRouter)
+app.use("/api/store", navRoutes);
+app.use("/api/admin", navAdminRoutes);
 
 app.get('/health', (req, res) => {
-    res.json({ok: true, service: 'auth-svc', time: new Date().toISOString()})
+    res.json({ok: true, service: 'navigation-svc', time: new Date().toISOString()})
 })
 
 
 ;(async () => {
     try {
-        const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/auth_db'
+        const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/navigation_db'
         await connectMongo(mongoUri)
         logger.info('Connected to MongoDB at ' + mongoUri)
         
         // Start HTTPS server with TLS
         try {
             const creds = getTlsOptions()
-            const httpsPort = process.env.HTTPS_PORT || 4443
+            const httpsPort = process.env.HTTPS_PORT || 4446
             https.createServer(creds, app).listen(httpsPort, () => {
-                logger.info(`Auth Service running on port ${httpsPort} with TLS`)
+                logger.info(`Navigation Service running on port ${httpsPort} with TLS`)
             })
 
             // Optional HTTP redirect server
             if (process.env.REDIRECT_SERVER === 'TRUE') {
-                const httpPort = process.env.HTTP_PORT || 4040
+                const httpPort = process.env.HTTP_PORT || 4046
                 http.createServer((req, res) => {
                     const host = req.headers.host || `localhost:${httpsPort}`;
                     const targetHost = host.includes(':') ? host.split(':')[0] + `:${httpsPort}` : `${host}:${httpsPort}`
