@@ -1,0 +1,546 @@
+openapi: 3.0.3
+info:
+  title: sacom product-svc (independent)
+  version: 1.1.0
+servers:
+  - url: http://localhost:4445
+tags:
+  - name: Health
+  - name: Storefront
+  - name: Admin Products
+  - name: Admin Variants
+  - name: Admin Inventory
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+  /products:
+    get:
+      tags: [Storefront]
+      summary: List storefront products
+      responses:
+        '200':
+          description: Product list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductListItem'
+  /products/{slug}:
+    parameters:
+      - in: path
+        name: slug
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Storefront]
+      summary: Get product by slug
+      responses:
+        '200':
+          description: Product detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDetail'
+  /categories/{slug}/products:
+    parameters:
+      - in: path
+        name: slug
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Storefront]
+      summary: List products by category slug
+      responses:
+        '200':
+          description: Product list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductListItem'
+  /api/admin/products:
+    get:
+      tags: [Admin Products]
+      summary: List admin products
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Product list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductListItem'
+    post:
+      tags: [Admin Products]
+      summary: Create product
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductWriteRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDocument'
+  /api/admin/products/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Admin Products]
+      summary: Get product by id
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDocument'
+    put:
+      tags: [Admin Products]
+      summary: Update product
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductWriteRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDocument'
+    delete:
+      tags: [Admin Products]
+      summary: Soft-delete product
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Deleted
+  /api/admin/products/{id}/publish:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+    patch:
+      tags: [Admin Products]
+      summary: Publish/unpublish product
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated
+  /api/admin/products/{id}/variants:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Admin Variants]
+      summary: List variants for product
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Variant list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VariantWithInventory'
+    post:
+      tags: [Admin Variants]
+      summary: Create variant for product
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VariantWriteRequest'
+      responses:
+        '201':
+          description: Created
+  /api/admin/products/{id}/variants/{variantId}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: variantId
+        required: true
+        schema:
+          type: string
+    patch:
+      tags: [Admin Variants]
+      summary: Update variant
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VariantWriteRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VariantDocument'
+  /api/admin/products/inventory/list:
+    get:
+      tags: [Admin Inventory]
+      summary: List inventory
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Inventory list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryDocument'
+  /api/admin/products/inventory/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+    patch:
+      tags: [Admin Inventory]
+      summary: Update inventory row
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryPatchRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryDocument'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ColorInfo:
+      type: object
+      properties:
+        name: { type: string }
+        family: { type: string }
+        hex: { type: string, example: '#B22222' }
+    CarePolicy:
+      type: object
+      properties:
+        washCare:
+          type: array
+          items: { type: string }
+        ironCare: { type: string }
+        bleach: { type: string }
+        dryClean: { type: string }
+        dryInstructions: { type: string }
+    ReturnPolicy:
+      type: object
+      properties:
+        returnable: { type: boolean }
+        windowDays: { type: number }
+        type:
+          type: string
+          enum: [none, exchange, refund, exchange_or_refund]
+        notes: { type: string }
+    MaterialProfile:
+      type: object
+      properties:
+        fabric: { type: string }
+        weave: { type: string }
+        workType: { type: string }
+        pattern: { type: string }
+        borderStyle: { type: string }
+        palluStyle: { type: string }
+    BlouseInfo:
+      type: object
+      properties:
+        included: { type: boolean }
+        type: { type: string }
+        lengthMeters: { type: number }
+    SareeSpec:
+      type: object
+      properties:
+        lengthMeters: { type: number }
+        widthMeters: { type: number }
+        weightGrams: { type: number }
+        fallPicoDone: { type: boolean }
+        stitchReady: { type: boolean }
+    VariantMerchandise:
+      type: object
+      required: [color]
+      properties:
+        color:
+          allOf:
+            - $ref: '#/components/schemas/ColorInfo'
+          required: [name]
+        size:
+          type: object
+          properties:
+            label: { type: string }
+            system: { type: string }
+            sortKey: { type: number }
+        blouse:
+          $ref: '#/components/schemas/BlouseInfo'
+        saree:
+          $ref: '#/components/schemas/SareeSpec'
+        style:
+          type: object
+          properties:
+            occasionTags:
+              type: array
+              items: { type: string }
+            workType: { type: string }
+            pattern: { type: string }
+        careOverride:
+          $ref: '#/components/schemas/CarePolicy'
+        returnPolicyOverride:
+          $ref: '#/components/schemas/ReturnPolicy'
+    ProductWriteRequest:
+      type: object
+      required: [title, primaryCategoryId]
+      properties:
+        title: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        shortDescription: { type: string }
+        primaryCategoryId: { type: string }
+        categoryIds:
+          type: array
+          items: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        currency: { type: string }
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              alt: { type: string }
+              sortOrder: { type: number }
+        materialProfile:
+          $ref: '#/components/schemas/MaterialProfile'
+        occasionTags:
+          type: array
+          items: { type: string }
+        blouseDefault:
+          $ref: '#/components/schemas/BlouseInfo'
+        careDefault:
+          $ref: '#/components/schemas/CarePolicy'
+        returnPolicyDefault:
+          $ref: '#/components/schemas/ReturnPolicy'
+        isActive: { type: boolean }
+        isFeatured: { type: boolean }
+        sortOrder: { type: number }
+        seoTitle: { type: string }
+        seoDescription: { type: string }
+    ProductDocument:
+      allOf:
+        - $ref: '#/components/schemas/ProductWriteRequest'
+        - type: object
+          properties:
+            _id: { type: string }
+            createdAt: { type: string }
+            updatedAt: { type: string }
+    ColorSummary:
+      type: object
+      properties:
+        colorNames:
+          type: array
+          items: { type: string }
+        swatches:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              hex: { type: string }
+        hasMultipleColors: { type: boolean }
+    ProductListItem:
+      allOf:
+        - $ref: '#/components/schemas/ProductDocument'
+        - type: object
+          properties:
+            minPrice: { type: number, nullable: true }
+            maxPrice: { type: number, nullable: true }
+            availability: { type: boolean }
+            colorSummary:
+              $ref: '#/components/schemas/ColorSummary'
+    VariantDocument:
+      type: object
+      properties:
+        _id: { type: string }
+        productId: { type: string }
+        sku: { type: string }
+        price: { type: number }
+        mrp: { type: number }
+        compareAtPrice: { type: number }
+        barcode: { type: string }
+        weightKg: { type: number }
+        dimensionsCm:
+          type: object
+          properties:
+            l: { type: number }
+            w: { type: number }
+            h: { type: number }
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              alt: { type: string }
+              sortOrder: { type: number }
+        merchandise:
+          $ref: '#/components/schemas/VariantMerchandise'
+        isDefault: { type: boolean }
+        isActive: { type: boolean }
+        sortOrder: { type: number }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+    InventoryDisplay:
+      type: object
+      properties:
+        colorName: { type: string }
+        sizeLabel: { type: string }
+        materialLabel: { type: string }
+    InventoryFulfillment:
+      type: object
+      properties:
+        warehouseCode: { type: string }
+        binLocation: { type: string }
+        restockEtaDays: { type: number }
+    InventoryDocument:
+      type: object
+      properties:
+        _id: { type: string }
+        sku: { type: string }
+        productId: { type: string }
+        variantId: { type: string }
+        trackInventory: { type: boolean }
+        availableQty: { type: number }
+        reservedQty: { type: number }
+        allowBackorder: { type: boolean }
+        reorderLevel: { type: number }
+        display:
+          $ref: '#/components/schemas/InventoryDisplay'
+        care:
+          $ref: '#/components/schemas/CarePolicy'
+        returnPolicy:
+          $ref: '#/components/schemas/ReturnPolicy'
+        fulfillment:
+          $ref: '#/components/schemas/InventoryFulfillment'
+        createdAt: { type: string }
+        updatedAt: { type: string }
+    InventoryPatchRequest:
+      type: object
+      properties:
+        trackInventory: { type: boolean }
+        availableQty: { type: number }
+        reservedQty: { type: number }
+        allowBackorder: { type: boolean }
+        reorderLevel: { type: number }
+        display:
+          $ref: '#/components/schemas/InventoryDisplay'
+        care:
+          $ref: '#/components/schemas/CarePolicy'
+        returnPolicy:
+          $ref: '#/components/schemas/ReturnPolicy'
+        fulfillment:
+          $ref: '#/components/schemas/InventoryFulfillment'
+    VariantWriteRequest:
+      type: object
+      required: [sku, price, merchandise]
+      properties:
+        sku: { type: string }
+        price: { type: number }
+        mrp: { type: number }
+        compareAtPrice: { type: number }
+        barcode: { type: string }
+        weightKg: { type: number }
+        dimensionsCm:
+          type: object
+          properties:
+            l: { type: number }
+            w: { type: number }
+            h: { type: number }
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              alt: { type: string }
+              sortOrder: { type: number }
+        merchandise:
+          $ref: '#/components/schemas/VariantMerchandise'
+        isDefault: { type: boolean }
+        isActive: { type: boolean }
+        sortOrder: { type: number }
+        inventory:
+          $ref: '#/components/schemas/InventoryPatchRequest'
+    VariantWithInventory:
+      allOf:
+        - $ref: '#/components/schemas/VariantDocument'
+        - type: object
+          properties:
+            inventory:
+              $ref: '#/components/schemas/InventoryDocument'
+            effectiveCare:
+              $ref: '#/components/schemas/CarePolicy'
+            effectiveReturnPolicy:
+              $ref: '#/components/schemas/ReturnPolicy'

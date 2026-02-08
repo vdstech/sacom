@@ -1,0 +1,19 @@
+openapi: 3.0.3
+info:
+  title: sacom gateway-svc
+  version: 1.0.0
+  description: |
+    API gateway entrypoint. Business APIs are documented in:
+    - auth-via-gateway.openapi.yaml
+    - catalog-via-gateway.openapi.yaml
+    - product-via-gateway.openapi.yaml
+    - navigation-via-gateway.openapi.yaml
+servers:
+  - url: http://localhost:4000
+paths:
+  /health:
+    get:
+      summary: Gateway health check
+      responses:
+        '200':
+          description: OK

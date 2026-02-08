@@ -1,0 +1,67 @@
+openapi: 3.0.3
+info:
+  title: sacom navigation APIs via gateway
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000
+paths:
+  /api/store/navigation:
+    get:
+      summary: Store navigation tree
+      responses:
+        '200': { description: Navigation tree }
+  /api/admin/navigation/items:
+    get:
+      summary: List nav items
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Nav list }
+    post:
+      summary: Create nav item
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Created }
+  /api/admin/navigation/items/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    patch:
+      summary: Update nav item
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Updated }
+    delete:
+      summary: Delete nav item
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Deleted }
+  /api/admin/navigation/reorder-children:
+    post:
+      summary: Reorder child nav items
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parentId: { type: string }
+                children:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200': { description: Reordered }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

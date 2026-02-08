@@ -45,7 +45,8 @@ export const listRoles = async (req, res) => {
 };
 
 export const updateRole = async (req, res) => {
-  const { id, name, permissions, description } = req.body;
+  const { name, permissions, description } = req.body;
+  const id = req.params.id || req.body.id;
 
   if (!id) {
     return res.status(400).json({ error: "id is required" });
@@ -102,7 +103,7 @@ export const updateRole = async (req, res) => {
 };
 
 export const deleteRole = async (req, res) => {
-  const { id } = req.body;
+  const id = req.params.id || req.body.id;
   if (!id) {
     return res.status(400).json({ error: "id is required" });
   }

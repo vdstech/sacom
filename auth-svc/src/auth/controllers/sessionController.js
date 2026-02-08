@@ -6,7 +6,7 @@ export const listSessions = async (req, res) => {
 };
 
 export const deleteSession = async (req, res) => {
-  const result = await Session.deleteOne({ _id: req.body.sessionId });
+  const result = await Session.deleteOne({ _id: req.body.sessionId, user: req.user._id });
   return res.json({ message: "Logged out from the session", count: result.deletedCount });
 };
 
@@ -16,7 +16,7 @@ export const deleteAllSessions = async (req, res) => {
 };
 
 export const logout = async (req, res) => {
-  const deletedSession = await Session.findByIdAndDelete(req.sessionId);
+  const deletedSession = await Session.findByIdAndDelete(req.auth?.sessionId);
   res.json({
     message: "Logged out from the current user",
     count: deletedSession ? 1 : 0,

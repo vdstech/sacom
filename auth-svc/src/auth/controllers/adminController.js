@@ -93,15 +93,47 @@ export const listUsers = async (req, res) => {
   return res.json(users);
 };
 
+export const getUserById = async (req, res) => {
+  const user = await User.findById(req.params.id).lean();
+  if (!user) return res.status(404).json({ error: "User not found" });
+  return res.json(user);
+};
+
+export const updateUser = async (req, res) => {
+  const { name, roles, disabled, force_reset } = req.body;
+
+  const patch = {};
+  if (name !== undefined) patch.name = String(name).trim();
+  if (disabled !== undefined) patch.disabled = !!disabled;
+  if (force_reset !== undefined) patch.force_reset = !!force_reset;
+
+  if (roles !== undefined) {
+    if (!Array.isArray(roles) || roles.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+      return res.status(400).json({ error: "roles must be an array of role ObjectIds" });
+    }
+    const roleObjectIds = roles.map((id) => new mongoose.Types.ObjectId(id));
+    const roleDocs = await Role.find({ _id: { $in: roleObjectIds } });
+    if (roleDocs.length !== roles.length) {
+      return res.status(400).json({ error: "invalid role(s)" });
+    }
+    patch.roles = roleDocs.map((r) => r._id);
+  }
+
+  const user = await User.findByIdAndUpdate(req.params.id, patch, { new: true });
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  return res.json(user);
+};
+
 export const deleteUser = async (req, res) => {
-  if (req.user.isSystemUser) {
+  const userToDelete = await User.findById(req.params.id);
+  if (!userToDelete) return res.status(404).json({ error: "User did not exist" });
+
+  if (userToDelete.isSystemUser) {
     return res.status(403).json({ error: "System user cannot be deleted" });
   }
 
-  const user = await User.findByIdAndDelete(req.body.id);
-  if (!user) {
-    res.status(409).json({ status: "User did not exist" });
-  }
+  const user = await User.findByIdAndDelete(req.params.id);
 
   return res.json(user);
 };

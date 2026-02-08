@@ -1,0 +1,89 @@
+openapi: 3.0.3
+info:
+  title: sacom navigation-svc (independent)
+  version: 1.0.0
+servers:
+  - url: http://localhost:4446
+tags:
+  - name: Health
+  - name: Store Navigation
+  - name: Admin Navigation
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200': { description: OK }
+  /api/store/navigation:
+    get:
+      tags: [Store Navigation]
+      summary: Get store navigation tree
+      responses:
+        '200': { description: Navigation tree }
+  /api/admin/navigation/items:
+    get:
+      tags: [Admin Navigation]
+      summary: List nav items
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Nav items }
+    post:
+      tags: [Admin Navigation]
+      summary: Create nav item
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Created }
+  /api/admin/navigation/items/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Admin Navigation]
+      summary: Update nav item
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Admin Navigation]
+      summary: Delete nav item
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Deleted }
+  /api/admin/navigation/reorder-children:
+    post:
+      tags: [Admin Navigation]
+      summary: Reorder child nav items
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parentId, children]
+              properties:
+                parentId: { type: string }
+                children:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200': { description: Reordered }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

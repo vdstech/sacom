@@ -1,0 +1,93 @@
+{
+  "info": {
+    "name": "sacom-navigation-svc",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Navigation service APIs (direct mode)."
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:4446" },
+    { "key": "access_token", "value": "" },
+    { "key": "nav_item_id", "value": "" },
+    { "key": "parent_nav_id", "value": "" },
+    { "key": "child_nav_id_1", "value": "" },
+    { "key": "child_nav_id_2", "value": "" }
+  ],
+  "item": [
+    { "name": "Health", "request": { "method": "GET", "url": "{{base_url}}/health" } },
+    {
+      "name": "Store APIs",
+      "item": [
+        {
+          "name": "Get Navigation Tree",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/store/navigation"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin APIs (Auth Required)",
+      "item": [
+        {
+          "name": "List Nav Items",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/admin/navigation/items"
+          }
+        },
+        {
+          "name": "Create Nav Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New Arrivals\",\n  \"slug\": \"new-arrivals\",\n  \"path\": \"/new-arrivals\",\n  \"parentId\": null\n}"
+            },
+            "url": "{{base_url}}/api/admin/navigation/items"
+          }
+        },
+        {
+          "name": "Update Nav Item",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Updated Nav\"\n}" },
+            "url": "{{base_url}}/api/admin/navigation/items/{{nav_item_id}}"
+          }
+        },
+        {
+          "name": "Delete Nav Item",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/admin/navigation/items/{{nav_item_id}}"
+          }
+        },
+        {
+          "name": "Reorder Children",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentId\": \"{{parent_nav_id}}\",\n  \"children\": [\"{{child_nav_id_1}}\", \"{{child_nav_id_2}}\"]\n}"
+            },
+            "url": "{{base_url}}/api/admin/navigation/reorder-children"
+          }
+        }
+      ]
+    }
+  ]
+}

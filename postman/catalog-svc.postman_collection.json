@@ -1,0 +1,79 @@
+{
+  "info": {
+    "name": "sacom-catalog-svc",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Catalog service APIs (direct mode)."
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:4444" },
+    { "key": "access_token", "value": "" },
+    { "key": "category_id", "value": "" },
+    { "key": "parent_category_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{base_url}}/health" }
+    },
+    {
+      "name": "Public Category APIs",
+      "item": [
+        {
+          "name": "List Categories",
+          "request": { "method": "GET", "url": "{{base_url}}/api/categories" }
+        },
+        {
+          "name": "Category Tree",
+          "request": { "method": "GET", "url": "{{base_url}}/api/categories/tree" }
+        },
+        {
+          "name": "Get Category By Id",
+          "request": { "method": "GET", "url": "{{base_url}}/api/categories/{{category_id}}" }
+        }
+      ]
+    },
+    {
+      "name": "Admin Category APIs (Auth Required)",
+      "item": [
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Silk Sarees\",\n  \"slug\": \"silk-sarees\",\n  \"description\": \"All silk sarees\",\n  \"parent\": \"{{parent_category_id}}\",\n  \"sortOrder\": 1,\n  \"isActive\": true\n}"
+            },
+            "url": "{{base_url}}/api/categories"
+          }
+        },
+        {
+          "name": "Update Category",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Silk Sarees Updated\",\n  \"sortOrder\": 2,\n  \"isActive\": true\n}"
+            },
+            "url": "{{base_url}}/api/categories/{{category_id}}"
+          }
+        },
+        {
+          "name": "Delete Category (Soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/categories/{{category_id}}"
+          }
+        }
+      ]
+    }
+  ]
+}

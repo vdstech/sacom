@@ -1,0 +1,168 @@
+openapi: 3.0.3
+info:
+  title: sacom auth APIs via gateway
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000
+paths:
+  /health:
+    get:
+      summary: Gateway health
+      responses:
+        '200': { description: OK }
+  /auth/login:
+    post:
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200': { description: Logged in }
+  /auth/refresh:
+    post:
+      summary: Refresh token
+      responses:
+        '200': { description: Refreshed }
+  /auth/logout:
+    post:
+      summary: Logout
+      responses:
+        '200': { description: Logged out }
+  /api/me:
+    get:
+      summary: Me
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Me payload }
+  /auth/session:
+    get:
+      summary: List sessions
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Session list }
+  /auth/session/deleteSession:
+    delete:
+      summary: Delete one session
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Deleted }
+  /auth/session/deleteAllSessions:
+    delete:
+      summary: Delete all sessions
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Deleted }
+  /api/admin/users:
+    get:
+      summary: List users
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: User list }
+    post:
+      summary: Create user
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Created }
+  /api/admin/users/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      summary: Get user
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: User }
+    put:
+      summary: Update user
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+    delete:
+      summary: Delete user
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Deleted }
+  /api/admin/roles:
+    get:
+      summary: List roles
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Roles }
+    post:
+      summary: Create role
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Created }
+  /api/admin/roles/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    put:
+      summary: Update role
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Updated }
+    delete:
+      summary: Delete role
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Deleted }
+  /api/admin/permissions:
+    get:
+      summary: List permissions
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Permissions }
+    post:
+      summary: Create permission
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201': { description: Created }
+    put:
+      summary: Update permission
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Updated }
+  /api/admin/permissions/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    delete:
+      summary: Delete permission
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Deleted }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

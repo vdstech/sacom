@@ -8,6 +8,31 @@ function slugify(text) {
     .replace(/(^-|-$)/g, "");
 }
 
+const CarePolicySchema = new mongoose.Schema(
+  {
+    washCare: { type: [String], default: [] },
+    ironCare: { type: String, default: "" },
+    bleach: { type: String, default: "" },
+    dryClean: { type: String, default: "" },
+    dryInstructions: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
+const ReturnPolicySchema = new mongoose.Schema(
+  {
+    returnable: { type: Boolean, default: false },
+    windowDays: { type: Number, default: 0, min: 0 },
+    type: {
+      type: String,
+      enum: ["none", "exchange", "refund", "exchange_or_refund"],
+      default: "none",
+    },
+    notes: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
 const ProductSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true, maxlength: 180 },
@@ -16,25 +41,42 @@ const ProductSchema = new mongoose.Schema(
     description: { type: String, default: "" },
     shortDescription: { type: String, default: "" },
 
-    // Category mapping (your “leaf home”)
     primaryCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category", required: true },
-    // Where product appears (leaf + optional extra like sale/new-arrivals)
     categoryIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Category" }],
 
     tags: [{ type: String }],
-
     currency: { type: String, default: "INR" },
 
-    images: [{
-      url: { type: String, required: true },
-      alt: { type: String, default: "" },
-      sortOrder: { type: Number, default: 0 },
-    }],
+    images: [
+      {
+        url: { type: String, required: true },
+        alt: { type: String, default: "" },
+        sortOrder: { type: Number, default: 0 },
+      },
+    ],
 
-    // Category-specific flexible data (fabric, workType, etc.)
+    materialProfile: {
+      fabric: { type: String, default: "" },
+      weave: { type: String, default: "" },
+      workType: { type: String, default: "" },
+      pattern: { type: String, default: "" },
+      borderStyle: { type: String, default: "" },
+      palluStyle: { type: String, default: "" },
+    },
+
+    occasionTags: { type: [String], default: [] },
+
+    blouseDefault: {
+      included: { type: Boolean, default: false },
+      type: { type: String, default: "" },
+      lengthMeters: { type: Number, default: 0, min: 0 },
+    },
+
+    careDefault: { type: CarePolicySchema, default: () => ({}) },
+    returnPolicyDefault: { type: ReturnPolicySchema, default: () => ({}) },
+
     attributes: { type: mongoose.Schema.Types.Mixed, default: {} },
 
-    // Publishing & merchandising
     isActive: { type: Boolean, default: true },
     isFeatured: { type: Boolean, default: false },
     sortOrder: { type: Number, default: 0 },
@@ -58,8 +100,11 @@ ProductSchema.pre("validate", function (next) {
   if (!this.categoryIds || this.categoryIds.length === 0) {
     this.categoryIds = [this.primaryCategoryId];
   }
+  if (this.returnPolicyDefault?.returnable === false) {
+    this.returnPolicyDefault.windowDays = 0;
+    this.returnPolicyDefault.type = "none";
+  }
   next();
 });
 
-// Explicit collection name for microservice compatibility
 export default mongoose.model("Product", ProductSchema, "products");

@@ -30,7 +30,25 @@ export const createNavSchema = z
     }
   });
 
-export const updateNavSchema = createNavSchema.partial();
+export const updateNavSchema = z.object({
+  name: z.string().min(1).optional(),
+  slug: z.string().min(1).optional(),
+  categoryId: objectId.nullable().optional(),
+  path: z.string().optional(),
+  description: z.string().optional(),
+  parentId: objectId.nullable().optional(),
+  children: z.array(objectId).optional(),
+}).superRefine((val, ctx) => {
+  // Only validate manual path rule when user explicitly sets categoryId/path in update payload
+  if ("categoryId" in val && !val.categoryId) {
+    const path = String(val.path || "").trim();
+    if (!path) {
+      ctx.addIssue({ code: "custom", message: "path is required when categoryId is null" });
+    } else if (!isManualPath(path)) {
+      ctx.addIssue({ code: "custom", message: "path must start with '/' or 'http(s)://'" });
+    }
+  }
+});
 
 // ✅ reorder within a parent by passing new children order
 export const reorderChildrenSchema = z.object({

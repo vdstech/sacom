@@ -10,6 +10,7 @@ import http from 'http'
 import cors from "cors";
 import adminProductRoutes from "./product/product.admin.routes.js";
 import storefrontProductRoutes from "./product/product.storefront.routes.js";
+import { validateRequiredEnv } from './config/validateRequiredEnv.js'
 
 const app = express()
 
@@ -30,14 +31,14 @@ app.use(pinoHttp({logger}))
 app.use(express.json({limit: '200kb'}))
 
 app.use(cors({
-  origin: ["http://localhost:3000"],   // your Next dev origin
+  origin: ["http://localhost:3000", "https://localhost:3000"],   // your Next dev origin
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
 
 const corsOptions = {
-  origin: ["http://localhost:3000"], // add https://localhost:3000 if you run Next on https
+  origin: ["http://localhost:3000", "https://localhost:3000"], // add https://localhost:3000 if you run Next on https
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -50,7 +51,7 @@ app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions)); 
 
 app.use("/", storefrontProductRoutes);
-app.use("/admin/products", adminProductRoutes);
+app.use("/api/admin/products", adminProductRoutes);
 
 app.get('/health', (req, res) => {
     res.json({ok: true, service: 'product-svc', time: new Date().toISOString()})
@@ -59,7 +60,8 @@ app.get('/health', (req, res) => {
 
 ;(async () => {
     try {
-        const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/product_db'
+        validateRequiredEnv('product-svc', logger, ['ACCESS_TOKEN_SECRET', 'TLS_CERT_PATH', 'TLS_KEY_PATH'])
+        const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/commerce_db'
         await connectMongo(mongoUri)
         logger.info('Connected to MongoDB at ' + mongoUri)
         

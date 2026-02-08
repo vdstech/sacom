@@ -17,9 +17,11 @@ r.post(
 );
 
 r.get("/", requireAuth, requiresPermission("user:read"), handleValidation, controller.listUsers);
+r.get("/:id", requireAuth, requiresPermission("user:read"), handleValidation, controller.getUserById);
+r.put("/:id", requireAuth, requiresPermission("user:write"), handleValidation, controller.updateUser);
 
 r.delete(
-  "/",
+  "/:id",
   requireAuth,
   requiresPermission("user:delete"),
   handleValidation,

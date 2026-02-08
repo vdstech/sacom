@@ -16,6 +16,7 @@ r.post(
 );
 
 r.get("/", requireAuth, requiresPermission("role:read"), handleValidation, controller.listRoles);
-r.delete("/", requireAuth, requiresPermission("role:delete"), handleValidation, controller.deleteRole);
+r.put("/:id", requireAuth, requiresPermission("role:update"), handleValidation, controller.updateRole);
+r.delete("/:id", requireAuth, requiresPermission("role:delete"), handleValidation, controller.deleteRole);
 
 export default r;

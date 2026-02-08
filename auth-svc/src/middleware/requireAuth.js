@@ -1,5 +1,13 @@
 import jwt from "jsonwebtoken";
 import Session from "../auth/models/sessionModel.js";
+import User from "../auth/models/userModel.js";
+
+function misconfigured(res) {
+  const isDev = process.env.NODE_ENV !== "production";
+  const payload = { error: "Server misconfigured" };
+  if (isDev) payload.code = "CONFIG_ACCESS_TOKEN_SECRET_MISSING";
+  return res.status(500).json(payload);
+}
 
 export async function requireAuth(req, res, next) {
   try {
@@ -15,7 +23,7 @@ export async function requireAuth(req, res, next) {
     }
 
     if (!process.env.ACCESS_TOKEN_SECRET) {
-      return res.status(500).json({ error: "Server misconfigured" });
+      return misconfigured(res);
     }
 
     // 2) Verify JWT
@@ -50,7 +58,15 @@ export async function requireAuth(req, res, next) {
       systemLevel: decoded?.systemLevel || "NONE",
     };
 
-    req.user = { _id: session.user };
+    const user = await User.findById(session.user)
+      .select("_id email name roles isSystemUser systemLevel disabled")
+      .lean();
+
+    if (!user || user.disabled) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    req.user = user;
     req.effectivePermissions = new Set(session.effectivePermissions || []);
 
     // 5) Touch lastSeenAt at most once per minute (avoid DB write per request)

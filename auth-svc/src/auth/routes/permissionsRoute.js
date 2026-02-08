@@ -16,7 +16,7 @@ r.post(
 
 r.get("/", requireAuth, requiresPermission("permission:read"), controller.listPermissions);
 
-r.put("/", requireAuth, requiresPermission("permission:create"), controller.updatePermissions);
+r.put("/", requireAuth, requiresPermission("permission:update"), controller.updatePermissions);
 
 r.delete(
   "/:id",

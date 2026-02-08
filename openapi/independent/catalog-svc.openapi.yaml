@@ -1,0 +1,73 @@
+openapi: 3.0.3
+info:
+  title: sacom catalog-svc (independent)
+  version: 1.0.0
+servers:
+  - url: http://localhost:4444
+tags:
+  - name: Health
+  - name: Categories
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200': { description: OK }
+  /api/categories:
+    get:
+      tags: [Categories]
+      summary: List categories
+      responses:
+        '200': { description: Category list }
+    post:
+      tags: [Categories]
+      summary: Create category
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Created }
+  /api/categories/tree:
+    get:
+      tags: [Categories]
+      summary: Category tree
+      responses:
+        '200': { description: Tree }
+  /api/categories/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Categories]
+      summary: Get category by id
+      responses:
+        '200': { description: Category }
+    put:
+      tags: [Categories]
+      summary: Update category
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Categories]
+      summary: Soft-delete category
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Deleted }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -1,0 +1,131 @@
+{
+  "info": {
+    "name": "sacom-gateway-svc",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Gateway service routes (single entrypoint mode)."
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:4000" },
+    { "key": "access_token", "value": "" },
+    { "key": "product_slug", "value": "" },
+    { "key": "product_id", "value": "" },
+    { "key": "category_id", "value": "" },
+    { "key": "category_slug", "value": "" },
+    { "key": "user_id", "value": "" }
+  ],
+  "item": [
+    { "name": "Health", "request": { "method": "GET", "url": "{{base_url}}/health" } },
+    {
+      "name": "Auth Via Gateway",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"superadmin@sa.com\",\n  \"password\": \"SuperAdmin@123\"\n}"
+            },
+            "url": "{{base_url}}/auth/login"
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog Via Gateway",
+      "item": [
+        { "name": "List Categories", "request": { "method": "GET", "url": "{{base_url}}/api/categories" } },
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Demo\",\n  \"slug\": \"demo\"\n}" },
+            "url": "{{base_url}}/api/categories"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Product Via Gateway",
+      "item": [
+        { "name": "List Store Products", "request": { "method": "GET", "url": "{{base_url}}/products" } },
+        { "name": "Get Store Product", "request": { "method": "GET", "url": "{{base_url}}/products/{{product_slug}}" } },
+        {
+          "name": "Create Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Gateway Product\",\n  \"slug\": \"gateway-product\",\n  \"primaryCategoryId\": \"{{category_id}}\",\n  \"categoryIds\": [\"{{category_id}}\"]\n}"
+            },
+            "url": "{{base_url}}/api/admin/products"
+          }
+        },
+        {
+          "name": "Publish Product",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"isActive\": true\n}" },
+            "url": "{{base_url}}/api/admin/products/{{product_id}}/publish"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Navigation Via Gateway",
+      "item": [
+        { "name": "Store Navigation", "request": { "method": "GET", "url": "{{base_url}}/api/store/navigation" } },
+        {
+          "name": "Admin Navigation List",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/admin/navigation/items"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users Via Gateway",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/admin/users"
+          }
+        },
+        {
+          "name": "Get User By Id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/admin/users/{{user_id}}"
+          }
+        }
+      ]
+    }
+  ]
+}

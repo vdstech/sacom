@@ -14,6 +14,7 @@ import meRouter from './auth/routes/meRoute.js'
 import authRouter from './auth/routes/authRoute.js';
 import sessionRouter from './auth/routes/sessionRoute.js'
 import permissionRouter from './auth/routes/permissionsRoute.js'
+import { validateRequiredEnv } from './config/validateRequiredEnv.js'
 
 const app = express()
 
@@ -34,14 +35,14 @@ app.use(pinoHttp({logger}))
 app.use(express.json({limit: '200kb'}))
 
 app.use(cors({
-  origin: ["http://localhost:3000"],   // your Next dev origin
+  origin: ["http://localhost:3000", "https://localhost:3000"],   // your Next dev origin
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
 
 const corsOptions = {
-  origin: ["http://localhost:3000"], // add https://localhost:3000 if you run Next on https
+  origin: ["http://localhost:3000", "https://localhost:3000"], // add https://localhost:3000 if you run Next on https
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -57,6 +58,7 @@ app.options(/.*/, cors(corsOptions));
 app.use('/api/admin/roles', rolesRouter)
 app.use('/api/admin/users', adminUsers)
 app.use('/api/', meRouter)
+app.use('/auth', authRouter)
 app.use('/', authRouter)
 app.use('/auth/session', sessionRouter)
 app.use('/api/admin/permissions', permissionRouter)
@@ -73,7 +75,8 @@ app.get('/health', (req, res) => {
 
 ;(async () => {
     try {
-        const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/auth_db'
+        validateRequiredEnv('auth-svc', logger, ['ACCESS_TOKEN_SECRET', 'TLS_CERT_PATH', 'TLS_KEY_PATH'])
+        const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/commerce_db'
         await connectMongo(mongoUri)
         logger.info('Connected to MongoDB at ' + mongoUri)
         

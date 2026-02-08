@@ -1,0 +1,53 @@
+openapi: 3.0.3
+info:
+  title: sacom catalog APIs via gateway
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000
+paths:
+  /api/categories:
+    get:
+      summary: List categories
+      responses:
+        '200': { description: Category list }
+    post:
+      summary: Create category
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Created }
+  /api/categories/tree:
+    get:
+      summary: Category tree
+      responses:
+        '200': { description: Tree }
+  /api/categories/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      summary: Get category by id
+      responses:
+        '200': { description: Category }
+    put:
+      summary: Update category
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Updated }
+    delete:
+      summary: Delete category
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Deleted }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

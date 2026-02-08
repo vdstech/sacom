@@ -1,179 +1,146 @@
 # Product Service API
 
-## Ownership & data dependencies
-- **Product**: owned by `product-svc` (`products` collection).
-- **Variant**: owned by `product-svc` (`product_variants` collection).
-- **Inventory availability**: stored in `inventory` collection and managed by `product-svc` for now (aligned with the current `auth-svc` inventory/variant schemas).
-- **Category slug resolution**: `/categories/:slug/products` expects `categories` to be present in the same Mongo database as `product-svc`.
+## Ownership
+- `products` collection: core product content + defaults (`materialProfile`, `careDefault`, `returnPolicyDefault`).
+- `product_variants` collection: sellable choices and color/size source of truth (`merchandise`).
+- `inventory` collection: stock + operational snapshot (`display`, `care`, `returnPolicy`, `fulfillment`).
 
-## Admin API (write)
+## Color swatch contract
+Color display is derived from active variants.
 
-### POST `/admin/products`
-Create a product.
+- `variant.merchandise.color.name` is required.
+- `variant.merchandise.color.hex` is optional swatch color.
+- `GET /products` and `GET /products/:slug` return:
+  - `colorSummary.colorNames: string[]`
+  - `colorSummary.swatches: [{ name, hex? }]`
+  - `colorSummary.hasMultipleColors: boolean`
 
-**Request body**
+Swatch rules:
+1. only active variants
+2. dedupe by case-insensitive color name
+3. order by default variant first, then `sortOrder`, then `createdAt`
+4. first matching variant wins when same name has different hex
+
+## Admin write APIs
+
+### POST `/api/admin/products`
+Create product with canonical defaults.
+
 ```json
 {
   "title": "Silk Saree",
   "slug": "silk-saree",
-  "description": "Long form description",
-  "shortDescription": "Short blurb",
   "primaryCategoryId": "<ObjectId>",
-  "categoryIds": ["<ObjectId>", "<ObjectId>"],
-  "tags": ["saree", "silk"],
-  "currency": "INR",
-  "images": [{ "url": "https://...", "alt": "...", "sortOrder": 1 }],
-  "attributes": { "fabric": "Silk" },
-  "isActive": true,
-  "isFeatured": false,
-  "sortOrder": 0,
-  "seoTitle": "...",
-  "seoDescription": "..."
-}
-```
-
-**Response**: Product document.
-
----
-
-### PUT `/admin/products/:id`
-Update a product (partial updates allowed).
-
-**Request body**
-```json
-{
-  "title": "Updated name",
-  "slug": "updated-name",
   "categoryIds": ["<ObjectId>"],
-  "isActive": true
-}
-```
-
-**Response**: Product document.
-
----
-
-### POST `/admin/products/:id/variants`
-Create a variant for a product.
-
-**Request body**
-```json
-{
-  "sku": "SR-RED-001",
-  "optionValues": { "color": "Red", "size": "Free" },
-  "price": 1999,
-  "mrp": 2499,
-  "compareAtPrice": 2499,
-  "barcode": "",
-  "weightKg": 0.4,
-  "dimensionsCm": { "l": 10, "w": 10, "h": 2 },
-  "images": [{ "url": "https://...", "alt": "...", "sortOrder": 1 }],
-  "isDefault": true,
-  "isActive": true,
-  "inventory": {
-    "trackInventory": true,
-    "availableQty": 12,
-    "reservedQty": 0,
-    "allowBackorder": false,
-    "reorderLevel": 3
+  "materialProfile": {
+    "fabric": "Kanchipuram silk",
+    "weave": "Handloom",
+    "workType": "Zari",
+    "pattern": "Traditional",
+    "borderStyle": "Temple",
+    "palluStyle": "Rich pallu"
+  },
+  "occasionTags": ["Wedding", "Festive"],
+  "blouseDefault": {
+    "included": true,
+    "type": "Unstitched",
+    "lengthMeters": 0.8
+  },
+  "careDefault": {
+    "washCare": ["Dry clean only"],
+    "ironCare": "Low heat reverse",
+    "bleach": "Do not bleach",
+    "dryClean": "Recommended",
+    "dryInstructions": "Dry in shade"
+  },
+  "returnPolicyDefault": {
+    "returnable": true,
+    "windowDays": 7,
+    "type": "exchange_or_refund",
+    "notes": "Unused products only"
   }
 }
 ```
 
-**Response**
+### PUT `/api/admin/products/:id`
+Update product. Same canonical fields as create.
+
+### POST `/api/admin/products/:id/variants`
+Create variant with canonical merchandise and optional initial inventory.
+
 ```json
 {
-  "variant": { "_id": "...", "sku": "SR-RED-001", "price": 1999 },
-  "inventory": { "_id": "...", "availableQty": 12, "allowBackorder": false }
-}
-```
-
-## Storefront API (read)
-
-### GET `/products`
-List products with filters.
-
-**Query params**
-- `q`: full-text search (title/description/tags)
-- `category` / `categoryId`: filter by category ObjectId
-- `minPrice` / `maxPrice`: filter by variant price range
-- `availability`: `in_stock` | `out_of_stock`
-- `page`, `limit`
-
-**Response**: Array of products with `minPrice`, `maxPrice`, and `availability` fields.
-
----
-
-### GET `/products/:slug`
-Fetch product detail by slug.
-
-**Response**
-```json
-{
-  "_id": "...",
-  "title": "Silk Saree",
-  "slug": "silk-saree",
-  "variants": [
-    {
-      "_id": "...",
-      "sku": "SR-RED-001",
-      "price": 1999,
-      "inventory": {
-        "availableQty": 12,
-        "allowBackorder": false
-      },
-      "availability": true
-    }
-  ],
-  "priceRange": { "min": 1999, "max": 1999 },
-  "availability": true
-}
-```
-
----
-
-### GET `/categories/:slug/products`
-Browse products by category slug.
-
-**Response**: Same as `/products` list.
-
-## Shared payloads
-
-### Product
-```json
-{
-  "_id": "...",
-  "title": "...",
-  "slug": "...",
-  "description": "...",
-  "shortDescription": "...",
-  "primaryCategoryId": "<ObjectId>",
-  "categoryIds": ["<ObjectId>"]
-}
-```
-
-### Variant
-```json
-{
-  "_id": "...",
-  "productId": "<ObjectId>",
-  "sku": "...",
-  "optionValues": { "color": "Red" },
+  "sku": "SR-RED-001",
   "price": 1999,
   "mrp": 2499,
-  "compareAtPrice": 2499
+  "merchandise": {
+    "color": { "name": "Red", "family": "Warm", "hex": "#C62828" },
+    "size": { "label": "Free", "system": "IN", "sortKey": 0 },
+    "blouse": { "included": true, "type": "Unstitched", "lengthMeters": 0.8 },
+    "saree": {
+      "lengthMeters": 5.5,
+      "widthMeters": 1.2,
+      "weightGrams": 700,
+      "fallPicoDone": false,
+      "stitchReady": false
+    },
+    "style": { "occasionTags": ["Wedding"], "workType": "Zari", "pattern": "Traditional" }
+  },
+  "inventory": {
+    "trackInventory": true,
+    "availableQty": 10,
+    "reservedQty": 0,
+    "allowBackorder": false,
+    "reorderLevel": 2,
+    "display": { "colorName": "Red", "sizeLabel": "Free", "materialLabel": "Silk" },
+    "care": {
+      "washCare": ["Dry clean only"],
+      "ironCare": "Low",
+      "bleach": "No",
+      "dryClean": "Yes",
+      "dryInstructions": "Shade"
+    },
+    "returnPolicy": {
+      "returnable": true,
+      "windowDays": 7,
+      "type": "exchange_or_refund",
+      "notes": "Unused"
+    }
+  }
 }
 ```
 
-### Inventory availability
-```json
-{
-  "sku": "...",
-  "variantId": "<ObjectId>",
-  "trackInventory": true,
-  "availableQty": 12,
-  "reservedQty": 0,
-  "allowBackorder": false,
-  "reorderLevel": 3
-}
-```
+### PATCH `/api/admin/products/:id/variants/:variantId`
+Update variant. Supports canonical merchandise fields and optional `inventory` snapshot patch.
+
+### PATCH `/api/admin/products/inventory/:id`
+Update stock + operational snapshot (`display`, `care`, `returnPolicy`, `fulfillment`).
+
+## Storefront read APIs
+
+### GET `/products`
+List products with `minPrice`, `maxPrice`, `availability`, and `colorSummary`.
+
+### GET `/products/:slug`
+Returns product + active variants + per-variant inventory + effective policies:
+- `effectiveCare`: `inventory.care` -> `variant.merchandise.careOverride` -> `product.careDefault`
+- `effectiveReturnPolicy`: `inventory.returnPolicy` -> `variant.merchandise.returnPolicyOverride` -> `product.returnPolicyDefault`
+
+### GET `/categories/:slug/products`
+Category-scope list with same product list payload shape.
+
+## Validation rules
+- `merchandise.color.name` required for variant create.
+- `merchandise.color.hex` must be `#RGB` or `#RRGGBB` when provided.
+- Numeric quantities/dimensions must be non-negative.
+- Return policy consistency:
+  - `returnable=false` -> `windowDays=0`, `type=none`
+  - `returnable=true` -> `windowDays>=1`
+
+## Additional admin APIs
+- `GET /api/admin/products`
+- `GET /api/admin/products/:id`
+- `PATCH /api/admin/products/:id/publish`
+- `DELETE /api/admin/products/:id`
+- `GET /api/admin/products/:id/variants`
+- `GET /api/admin/products/inventory/list`

@@ -131,6 +131,19 @@ export async function updateCategory(req, res) {
       return res.status(400).json({ error: "Category cannot be its own parent" });
     }
 
+    // Block parent loops: cannot move a category under its own descendant.
+    if (patch.parent) {
+      const proposedParent = await Category.findById(patch.parent).select("ancestors").lean();
+      if (!proposedParent) {
+        return res.status(400).json({ error: "Parent category not found" });
+      }
+
+      const ancestorIds = (proposedParent.ancestors || []).map((a) => String(a));
+      if (ancestorIds.includes(String(doc._id))) {
+        return res.status(400).json({ error: "Category cannot be moved under its own descendant" });
+      }
+    }
+
     Object.assign(doc, patch);
     await doc.save();
 

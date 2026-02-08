@@ -1,0 +1,159 @@
+{
+  "info": {
+    "name": "sacom-product-svc",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Product service APIs (direct mode). Canonical merchandise + inventory model."
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:4445" },
+    { "key": "access_token", "value": "" },
+    { "key": "product_id", "value": "" },
+    { "key": "product_slug", "value": "" },
+    { "key": "variant_id", "value": "" },
+    { "key": "inventory_id", "value": "" },
+    { "key": "category_id", "value": "" },
+    { "key": "category_slug", "value": "" }
+  ],
+  "item": [
+    { "name": "Health", "request": { "method": "GET", "url": "{{base_url}}/health" } },
+    {
+      "name": "Storefront APIs",
+      "item": [
+        { "name": "List Products", "request": { "method": "GET", "url": "{{base_url}}/products" } },
+        { "name": "Get Product By Slug", "request": { "method": "GET", "url": "{{base_url}}/products/{{product_slug}}" } },
+        { "name": "List Products By Category Slug", "request": { "method": "GET", "url": "{{base_url}}/categories/{{category_slug}}/products" } }
+      ]
+    },
+    {
+      "name": "Admin Product APIs (Auth Required)",
+      "item": [
+        {
+          "name": "List Admin Products",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/admin/products"
+          }
+        },
+        {
+          "name": "Create Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Silk Saree\",\n  \"slug\": \"silk-saree\",\n  \"description\": \"Long description\",\n  \"shortDescription\": \"Short description\",\n  \"primaryCategoryId\": \"{{category_id}}\",\n  \"categoryIds\": [\"{{category_id}}\"],\n  \"tags\": [\"saree\", \"silk\"],\n  \"currency\": \"INR\",\n  \"materialProfile\": {\n    \"fabric\": \"Kanchipuram silk\",\n    \"weave\": \"Handloom\",\n    \"workType\": \"Zari\",\n    \"pattern\": \"Traditional\",\n    \"borderStyle\": \"Temple\",\n    \"palluStyle\": \"Rich pallu\"\n  },\n  \"occasionTags\": [\"Wedding\", \"Festive\"],\n  \"blouseDefault\": {\n    \"included\": true,\n    \"type\": \"Unstitched\",\n    \"lengthMeters\": 0.8\n  },\n  \"careDefault\": {\n    \"washCare\": [\"Dry clean only\"],\n    \"ironCare\": \"Low heat reverse\",\n    \"bleach\": \"Do not bleach\",\n    \"dryClean\": \"Recommended\",\n    \"dryInstructions\": \"Dry in shade\"\n  },\n  \"returnPolicyDefault\": {\n    \"returnable\": true,\n    \"windowDays\": 7,\n    \"type\": \"exchange_or_refund\",\n    \"notes\": \"Unused products only\"\n  },\n  \"isActive\": true\n}"
+            },
+            "url": "{{base_url}}/api/admin/products"
+          }
+        },
+        {
+          "name": "Get Product By Id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/admin/products/{{product_id}}"
+          }
+        },
+        {
+          "name": "Update Product",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Silk Saree Updated\",\n  \"slug\": \"silk-saree-updated\",\n  \"isFeatured\": true,\n  \"materialProfile\": {\n    \"fabric\": \"Soft silk\",\n    \"workType\": \"Thread\"\n  }\n}"
+            },
+            "url": "{{base_url}}/api/admin/products/{{product_id}}"
+          }
+        },
+        {
+          "name": "Publish/Unpublish Product",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"isActive\": true\n}" },
+            "url": "{{base_url}}/api/admin/products/{{product_id}}/publish"
+          }
+        },
+        {
+          "name": "Delete Product (Soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/admin/products/{{product_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Variants & Inventory (Auth Required)",
+      "item": [
+        {
+          "name": "List Variants For Product",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/admin/products/{{product_id}}/variants"
+          }
+        },
+        {
+          "name": "Create Variant",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"SR-RED-001\",\n  \"price\": 1999,\n  \"mrp\": 2499,\n  \"isActive\": true,\n  \"merchandise\": {\n    \"color\": { \"name\": \"Red\", \"family\": \"Warm\", \"hex\": \"#C62828\" },\n    \"size\": { \"label\": \"Free\", \"system\": \"IN\", \"sortKey\": 0 },\n    \"blouse\": { \"included\": true, \"type\": \"Unstitched\", \"lengthMeters\": 0.8 },\n    \"saree\": { \"lengthMeters\": 5.5, \"widthMeters\": 1.2, \"weightGrams\": 700, \"fallPicoDone\": false, \"stitchReady\": false },\n    \"style\": { \"occasionTags\": [\"Wedding\"], \"workType\": \"Zari\", \"pattern\": \"Traditional\" }\n  },\n  \"inventory\": {\n    \"trackInventory\": true,\n    \"availableQty\": 10,\n    \"reservedQty\": 0,\n    \"allowBackorder\": false,\n    \"reorderLevel\": 2,\n    \"display\": { \"colorName\": \"Red\", \"sizeLabel\": \"Free\", \"materialLabel\": \"Silk\" },\n    \"care\": { \"washCare\": [\"Dry clean only\"], \"ironCare\": \"Low\", \"bleach\": \"No\", \"dryClean\": \"Yes\", \"dryInstructions\": \"Shade\" },\n    \"returnPolicy\": { \"returnable\": true, \"windowDays\": 7, \"type\": \"exchange_or_refund\", \"notes\": \"Unused\" }\n  }\n}"
+            },
+            "url": "{{base_url}}/api/admin/products/{{product_id}}/variants"
+          }
+        },
+        {
+          "name": "Update Variant",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"price\": 2099,\n  \"merchandise\": {\n    \"color\": { \"name\": \"Maroon\", \"hex\": \"#800000\" },\n    \"size\": { \"label\": \"Free\" }\n  }\n}" },
+            "url": "{{base_url}}/api/admin/products/{{product_id}}/variants/{{variant_id}}"
+          }
+        },
+        {
+          "name": "List Inventory",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/admin/products/inventory/list"
+          }
+        },
+        {
+          "name": "Update Inventory",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"availableQty\": 25,\n  \"reservedQty\": 1,\n  \"display\": { \"colorName\": \"Red\", \"sizeLabel\": \"Free\", \"materialLabel\": \"Silk\" },\n  \"care\": { \"washCare\": [\"Dry clean only\"], \"ironCare\": \"Low\", \"bleach\": \"No\", \"dryClean\": \"Yes\", \"dryInstructions\": \"Shade\" },\n  \"returnPolicy\": { \"returnable\": true, \"windowDays\": 7, \"type\": \"exchange_or_refund\", \"notes\": \"Unused\" }\n}" },
+            "url": "{{base_url}}/api/admin/products/inventory/{{inventory_id}}"
+          }
+        }
+      ]
+    }
+  ]
+}

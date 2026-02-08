@@ -1,6 +1,13 @@
 import jwt from "jsonwebtoken";
 import Session from "../models/sessionModel.js";
 
+function misconfigured(res) {
+  const isDev = process.env.NODE_ENV !== "production";
+  const payload = { error: "Server misconfigured" };
+  if (isDev) payload.code = "CONFIG_ACCESS_TOKEN_SECRET_MISSING";
+  return res.status(500).json(payload);
+}
+
 export async function requireAuth(req, res, next) {
   try {
     // 1) Get token from Authorization header
@@ -15,7 +22,7 @@ export async function requireAuth(req, res, next) {
     }
 
     if (!process.env.ACCESS_TOKEN_SECRET) {
-      return res.status(500).json({ error: "Server misconfigured" });
+      return misconfigured(res);
     }
 
     // 2) Verify JWT

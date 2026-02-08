@@ -1,18 +1,14 @@
 import fs from 'fs'
-import path from 'path'
-import url from 'url'
 import pino from 'pino'
 
-const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
 const logger = pino({ base: { service: 'product-svc', module: 'tls' } })
 
 export function getTlsOptions() {
-    const certPath = process.env.TLS_CERT_PATH
-    const keyPath = process.env.TLS_KEY_PATH
+    const certPath = process.env.TLS_CERT_PATH || '../auth-svc/certs/localhost.crt'
+    const keyPath = process.env.TLS_KEY_PATH || '../auth-svc/certs/localhost.key'
 
     logger.info('The cert path is ', certPath)
     if (!certPath || !keyPath) {
-        logger.warn('TLS configuration skipped - TLS_CERT_PATH and TLS_KEY_PATH not set')
         throw new Error('TLS_CERT_PATH and TLS_KEY_PATH environment variables must be set for TLS configuration')
     }
 

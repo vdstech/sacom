@@ -1,0 +1,22 @@
+{
+  "name": "admin-portal",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 NODE_OPTIONS='--use-system-ca' NODE_EXTRA_CA_CERTS=../auth-svc/certs/localhost.crt next dev --experimental-https",
+    "build": "next build",
+    "start": "NODE_TLS_REJECT_UNAUTHORIZED=0 NODE_OPTIONS='--use-system-ca' NODE_EXTRA_CA_CERTS=../auth-svc/certs/localhost.crt next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "14.2.10",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.11.30",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "typescript": "5.5.4"
+  }
+}

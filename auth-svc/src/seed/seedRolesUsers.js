@@ -52,8 +52,8 @@ export async function seedRoleUsers() {
 
   console.log("✅ Roles seeded:", roleDefs.map((r) => r.name));
 
-  const SUPER_EMAIL = "superadmin@sa.com";
-  const SUPER_PASSWORD = "SuperAdmin@123";
+  const SUPER_EMAIL = process.env.SUPER_ADMIN_EMAIL || "superadmin@sa.com";
+  const SUPER_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || "SuperAdmin@123";
 
   let superUser = await User.findOne({ email: SUPER_EMAIL });
 
@@ -81,9 +81,11 @@ export async function seedRoleUsers() {
     if (superUser.force_reset !== undefined) superUser.force_reset = false;
     if (superUser.isSystemUser !== undefined) superUser.isSystemUser = true;
     if (superUser.systemLevel !== undefined) superUser.systemLevel = "SUPER";
+    // Keep seed deterministic so login credentials are always valid after re-seed.
+    superUser.passwordHash = await hashPassword(SUPER_PASSWORD);
 
     await superUser.save();
-    console.log(`✅ Super admin user ensured: ${SUPER_EMAIL}`);
+    console.log(`✅ Super admin user ensured (password reset to seed value): ${SUPER_EMAIL}`);
   }
 
   const countByRole = await User.countDocuments({ roles: superRole._id });
