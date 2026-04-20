@@ -1,3 +1,4 @@
 {
-  "/page": "app/page.js"
+  "/c/[...slug]/page": "app/c/[...slug]/page.js",
+  "/api/proxy/[...path]/route": "app/api/proxy/[...path]/route.js"
 }

@@ -1,4 +1,10 @@
 import mongoose from "mongoose";
+import {
+  DEFAULT_RETURN_POLICY_TEXT,
+  DEFAULT_RETURNABLE,
+  DEFAULT_RETURN_WINDOW_DAYS,
+  DEFAULT_SHIPPING_TEXT,
+} from "./defaultMetadata.js";
 
 function slugify(text) {
   return String(text || "")
@@ -8,27 +14,25 @@ function slugify(text) {
     .replace(/(^-|-$)/g, "");
 }
 
+const ShippingSchema = new mongoose.Schema(
+  {
+    text: { type: String, default: DEFAULT_SHIPPING_TEXT },
+  },
+  { _id: false }
+);
+
 const CarePolicySchema = new mongoose.Schema(
   {
-    washCare: { type: [String], default: [] },
-    ironCare: { type: String, default: "" },
-    bleach: { type: String, default: "" },
-    dryClean: { type: String, default: "" },
-    dryInstructions: { type: String, default: "" },
+    text: { type: String, default: "" },
   },
   { _id: false }
 );
 
 const ReturnPolicySchema = new mongoose.Schema(
   {
-    returnable: { type: Boolean, default: false },
-    windowDays: { type: Number, default: 0, min: 0 },
-    type: {
-      type: String,
-      enum: ["none", "exchange", "refund", "exchange_or_refund"],
-      default: "none",
-    },
-    notes: { type: String, default: "" },
+    text: { type: String, default: DEFAULT_RETURN_POLICY_TEXT },
+    returnable: { type: Boolean, default: DEFAULT_RETURNABLE },
+    windowDays: { type: Number, default: DEFAULT_RETURN_WINDOW_DAYS, min: 0 },
   },
   { _id: false }
 );
@@ -41,8 +45,7 @@ const ProductSchema = new mongoose.Schema(
     description: { type: String, default: "" },
     shortDescription: { type: String, default: "" },
 
-    primaryCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category", required: true },
-    categoryIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Category" }],
+    categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category", required: true },
 
     tags: [{ type: String }],
     currency: { type: String, default: "INR" },
@@ -55,34 +58,13 @@ const ProductSchema = new mongoose.Schema(
       },
     ],
 
-    materialProfile: {
-      fabric: { type: String, default: "" },
-      weave: { type: String, default: "" },
-      workType: { type: String, default: "" },
-      pattern: { type: String, default: "" },
-      borderStyle: { type: String, default: "" },
-      palluStyle: { type: String, default: "" },
-    },
-
-    occasionTags: { type: [String], default: [] },
-
-    blouseDefault: {
-      included: { type: Boolean, default: false },
-      type: { type: String, default: "" },
-      lengthMeters: { type: Number, default: 0, min: 0 },
-    },
-
-    careDefault: { type: CarePolicySchema, default: () => ({}) },
-    returnPolicyDefault: { type: ReturnPolicySchema, default: () => ({}) },
-
-    attributes: { type: mongoose.Schema.Types.Mixed, default: {} },
+    shipping: { type: ShippingSchema, default: () => ({}) },
+    care: { type: CarePolicySchema, default: () => ({}) },
+    returnPolicy: { type: ReturnPolicySchema, default: () => ({}) },
+    details: { type: mongoose.Schema.Types.Mixed, default: {} },
 
     isActive: { type: Boolean, default: true },
     isFeatured: { type: Boolean, default: false },
-    sortOrder: { type: Number, default: 0 },
-
-    seoTitle: { type: String, default: "" },
-    seoDescription: { type: String, default: "" },
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
@@ -91,18 +73,15 @@ const ProductSchema = new mongoose.Schema(
 );
 
 ProductSchema.index({ slug: 1 }, { unique: true });
-ProductSchema.index({ primaryCategoryId: 1, isActive: 1 });
-ProductSchema.index({ categoryIds: 1, isActive: 1 });
+ProductSchema.index({ categoryId: 1, isActive: 1 });
 ProductSchema.index({ title: "text", description: "text", tags: "text" });
 
 ProductSchema.pre("validate", function (next) {
   if (!this.slug && this.title) this.slug = slugify(this.title);
-  if (!this.categoryIds || this.categoryIds.length === 0) {
-    this.categoryIds = [this.primaryCategoryId];
-  }
-  if (this.returnPolicyDefault?.returnable === false) {
-    this.returnPolicyDefault.windowDays = 0;
-    this.returnPolicyDefault.type = "none";
+  if (this.returnPolicy?.returnable === false) {
+    this.returnPolicy.windowDays = 0;
+  } else if (this.returnPolicy?.returnable === true) {
+    this.returnPolicy.windowDays = Math.max(1, Number(this.returnPolicy.windowDays || 0));
   }
   next();
 });

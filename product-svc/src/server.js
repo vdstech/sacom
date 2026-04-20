@@ -11,6 +11,9 @@ import cors from "cors";
 import adminProductRoutes from "./product/product.admin.routes.js";
 import storefrontProductRoutes from "./product/product.storefront.routes.js";
 import { validateRequiredEnv } from './config/validateRequiredEnv.js'
+import { syncInventoryIndexes } from "./inventory/inventory.model.js";
+import { syncVariantIndexes } from "./variant/variant.model.js";
+import { syncCartIndexes } from "./cart/cart.model.js";
 
 const app = express()
 
@@ -64,6 +67,9 @@ app.get('/health', (req, res) => {
         const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/commerce_db'
         await connectMongo(mongoUri)
         logger.info('Connected to MongoDB at ' + mongoUri)
+        await syncVariantIndexes(logger)
+        await syncInventoryIndexes(logger)
+        await syncCartIndexes(logger)
         
         // Start HTTPS server with TLS
         try {

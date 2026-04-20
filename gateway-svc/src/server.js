@@ -30,7 +30,12 @@ const logger = pino({base: {service: 'gateway-svc'}})
 app.use(pinoHttp({logger}))
 
 const corsOptions = {
-  origin: ["http://localhost:3000", "https://localhost:3000"],
+  origin: [
+    "http://localhost:3000",
+    "https://localhost:3000",
+    "http://localhost:3001",
+    "https://localhost:3001",
+  ],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -42,7 +47,6 @@ app.options(/.*/, cors(corsOptions));
 const AUTH_SVC_URL = process.env.AUTH_SVC_URL || 'https://localhost:4443'
 const CATALOG_SVC_URL = process.env.CATALOG_SVC_URL || 'https://localhost:4444'
 const PRODUCT_SVC_URL = process.env.PRODUCT_SVC_URL || 'https://localhost:4445'
-const NAVIGATION_SVC_URL = process.env.NAVIGATION_SVC_URL || 'https://localhost:4446'
 
 const proxyOptions = (target, mountPath) => ({
   target,
@@ -53,14 +57,52 @@ const proxyOptions = (target, mountPath) => ({
   pathRewrite: (path) => `${mountPath}${path}`
 })
 
-app.use('/api/admin/navigation', createProxyMiddleware(proxyOptions(NAVIGATION_SVC_URL, '/api/admin/navigation')))
-app.use('/api/store', createProxyMiddleware(proxyOptions(NAVIGATION_SVC_URL, '/api/store')))
 app.use('/api/categories', createProxyMiddleware(proxyOptions(CATALOG_SVC_URL, '/api/categories')))
 app.use('/api/admin/products', createProxyMiddleware(proxyOptions(PRODUCT_SVC_URL, '/api/admin/products')))
 app.use('/products', createProxyMiddleware(proxyOptions(PRODUCT_SVC_URL, '/products')))
+app.use('/cart', createProxyMiddleware(proxyOptions(PRODUCT_SVC_URL, '/cart')))
 app.use('/api/admin', createProxyMiddleware(proxyOptions(AUTH_SVC_URL, '/api/admin')))
 app.use('/auth', createProxyMiddleware(proxyOptions(AUTH_SVC_URL, '/auth')))
 app.use('/api', createProxyMiddleware(proxyOptions(AUTH_SVC_URL, '/api')))
+
+app.get('/', (req, res) => {
+  res
+    .status(200)
+    .type('html')
+    .send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sacom Gateway</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fb; color: #132238; }
+      main { max-width: 760px; margin: 48px auto; padding: 24px; }
+      .card { background: #fff; border-radius: 14px; padding: 24px; box-shadow: 0 10px 30px rgba(19, 34, 56, 0.08); }
+      h1 { margin-top: 0; font-size: 28px; }
+      p, li { line-height: 1.6; }
+      ul { padding-left: 20px; }
+      code { background: #eef3ff; padding: 2px 6px; border-radius: 6px; }
+      a { color: #0f4cc9; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <h1>Sacom Gateway</h1>
+        <p>This service proxies backend APIs. The browser UI is served by the frontends below, not by the gateway root.</p>
+        <ul>
+          <li>Admin portal: <a href="https://localhost:3000">https://localhost:3000</a></li>
+          <li>Customer storefront: <a href="http://localhost:3001">http://localhost:3001</a></li>
+          <li>Gateway health: <a href="/health">/health</a></li>
+        </ul>
+        <p>Common API prefixes: <code>/auth</code>, <code>/api</code>, <code>/api/categories</code>, <code>/api/admin/products</code>, <code>/products</code>, <code>/cart</code>.</p>
+      </section>
+    </main>
+  </body>
+</html>`)
+})
 
 app.get('/health', (req, res) => {
   res.json({ok: true, service: 'gateway-svc', time: new Date().toISOString()})

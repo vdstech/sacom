@@ -65,9 +65,64 @@ paths:
       security: [{ bearerAuth: [] }]
       responses:
         '200': { description: Deleted }
+  /api/categories/{id}/filter-config:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Categories]
+      summary: Resolve effective inherited filter config for category
+      responses:
+        '200':
+          description: Filter config payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryFilterConfigResponse'
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  schemas:
+    CategoryFilterConfigResponse:
+      type: object
+      properties:
+        categoryId: { type: string }
+        ancestors:
+          type: array
+          items: { type: string }
+        resolvedConfig:
+          type: object
+          properties:
+            version: { type: number }
+            facets:
+              type: array
+              items:
+                type: object
+                properties:
+                  key: { type: string }
+                  label: { type: string }
+                  type: { type: string, enum: [enum] }
+                  scope: { type: string, enum: [variant], default: variant }
+                  sourcePath: { type: string }
+                  valueType: { type: string, enum: [string, number, boolean, string_array] }
+                  enabled: { type: boolean }
+                  multiSelect: { type: boolean }
+                  searchMode: { type: string }
+                  showOther: { type: boolean }
+                  options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        value: { type: string }
+                        label: { type: string }
+                        synonyms:
+                          type: array
+                          items: { type: string }
+                        sortOrder: { type: number }
+                        enabled: { type: boolean }

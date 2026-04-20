@@ -10,7 +10,6 @@ const HEALTH_TARGETS: Record<string, string> = {
   auth: process.env.AUTH_INTERNAL_URL || "https://localhost:4443",
   catalog: process.env.CATALOG_INTERNAL_URL || "https://localhost:4444",
   product: process.env.PRODUCT_INTERNAL_URL || "https://localhost:4445",
-  navigation: process.env.NAVIGATION_INTERNAL_URL || "https://localhost:4446",
 };
 
 function requestJson(urlString: string) {
@@ -77,4 +76,3 @@ export async function GET(_request: Request, context: Context) {
     );
   }
 }
-

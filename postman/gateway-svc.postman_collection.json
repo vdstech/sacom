@@ -73,7 +73,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Gateway Product\",\n  \"slug\": \"gateway-product\",\n  \"primaryCategoryId\": \"{{category_id}}\",\n  \"categoryIds\": [\"{{category_id}}\"]\n}"
+              "raw": "{\n  \"title\": \"Gateway Product\",\n  \"slug\": \"gateway-product\",\n  \"categoryId\": \"{{category_id}}\",\n  \"shipping\": {\n    \"text\": \"Ships in 1-2 business days\"\n  },\n  \"care\": {\n    \"text\": \"Dry clean only\"\n  },\n  \"returnPolicy\": {\n    \"text\": \"Returns and exchanges accepted within 7 days for unused items.\",\n    \"returnable\": true,\n    \"windowDays\": 7\n  }\n}"
             },
             "url": "{{base_url}}/api/admin/products"
           }
@@ -88,20 +88,6 @@
             ],
             "body": { "mode": "raw", "raw": "{\n  \"isActive\": true\n}" },
             "url": "{{base_url}}/api/admin/products/{{product_id}}/publish"
-          }
-        }
-      ]
-    },
-    {
-      "name": "Navigation Via Gateway",
-      "item": [
-        { "name": "Store Navigation", "request": { "method": "GET", "url": "{{base_url}}/api/store/navigation" } },
-        {
-          "name": "Admin Navigation List",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": "{{base_url}}/api/admin/navigation/items"
           }
         }
       ]

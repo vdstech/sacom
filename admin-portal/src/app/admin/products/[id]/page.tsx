@@ -1,10 +1,23 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProtectedPage } from "@/components/ProtectedPage";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
+import { hasAnyPermission } from "@/lib/permissions";
+import {
+  CategoryDefinitionConfig,
+  ProductFieldDefinition,
+  defaultFilterConfig,
+  normalizeFilterConfig,
+} from "@/lib/filterConfig";
+import {
+  DEFAULT_RETURN_POLICY_TEXT,
+  DEFAULT_RETURNABLE,
+  DEFAULT_RETURN_WINDOW_DAYS,
+  DEFAULT_SHIPPING_TEXT,
+} from "@/lib/productMetadataDefaults";
 
 type ProductDoc = {
   _id: string;
@@ -12,37 +25,30 @@ type ProductDoc = {
   slug: string;
   description: string;
   shortDescription: string;
+  categoryId: string;
   isActive: boolean;
   isFeatured: boolean;
   tags?: string[];
-  occasionTags?: string[];
   currency?: string;
-  materialProfile?: {
-    fabric?: string;
-    weave?: string;
-    workType?: string;
-    pattern?: string;
-    borderStyle?: string;
-    palluStyle?: string;
+  images?: Array<{ url: string; alt?: string; sortOrder?: number }>;
+  shipping?: {
+    text?: string;
   };
-  blouseDefault?: {
-    included?: boolean;
-    type?: string;
-    lengthMeters?: number;
+  care?: {
+    text?: string;
   };
-  careDefault?: {
-    washCare?: string[];
-    ironCare?: string;
-    bleach?: string;
-    dryClean?: string;
-    dryInstructions?: string;
-  };
-  returnPolicyDefault?: {
+  returnPolicy?: {
+    text?: string;
     returnable?: boolean;
     windowDays?: number;
-    type?: string;
-    notes?: string;
   };
+  details?: Record<string, unknown>;
+};
+
+type CategoryDoc = { _id: string; name: string };
+
+type CategoryFilterConfigPayload = {
+  resolvedConfig?: CategoryDefinitionConfig;
 };
 
 function parseCsv(value: FormDataEntryValue | null) {
@@ -52,12 +58,69 @@ function parseCsv(value: FormDataEntryValue | null) {
     .filter(Boolean);
 }
 
+function parseLineList(value: string) {
+  return String(value || "")
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseImageUrls(raw: string) {
+  return parseLineList(raw).map((url, index) => ({ url, alt: "", sortOrder: index }));
+}
+
+function slugify(value: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function detailValueToText(value: unknown) {
+  if (Array.isArray(value)) return value.join("\n");
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { accessToken, refreshAccessToken } = useAuth();
+  const { accessToken, refreshAccessToken, me } = useAuth();
   const [product, setProduct] = useState<ProductDoc | null>(null);
+  const [categories, setCategories] = useState<CategoryDoc[]>([]);
+  const [categoryConfig, setCategoryConfig] = useState<CategoryDefinitionConfig>(defaultFilterConfig());
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [details, setDetails] = useState<Record<string, unknown>>({});
   const [error, setError] = useState("");
+  const [title, setTitle] = useState("");
+  const [slug, setSlug] = useState("");
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const canDelete = hasAnyPermission(me?.permissions || [], ["product:delete"]);
+
+  const loadCategories = async () => {
+    const payload = await apiRequest<CategoryDoc[]>("/api/categories", {
+      service: "catalog",
+      token: accessToken,
+      onUnauthorized: refreshAccessToken,
+    });
+    setCategories(payload || []);
+  };
+
+  const loadCategoryConfig = async (categoryId: string) => {
+    if (!categoryId) {
+      setCategoryConfig(defaultFilterConfig());
+      return;
+    }
+
+    const payload = await apiRequest<CategoryFilterConfigPayload>(`/api/categories/${categoryId}/filter-config`, {
+      service: "catalog",
+      token: accessToken,
+      onUnauthorized: refreshAccessToken,
+    });
+    setCategoryConfig(normalizeFilterConfig(payload?.resolvedConfig));
+  };
 
   const load = async () => {
     try {
@@ -67,59 +130,225 @@ export default function ProductDetailPage() {
         onUnauthorized: refreshAccessToken,
       });
       setProduct(payload);
+      setTitle(String(payload?.title || ""));
+      setSlug(String(payload?.slug || ""));
+      setSlugManuallyEdited(false);
+      setSelectedCategoryId(String(payload?.categoryId || ""));
+      setDetails(payload?.details || {});
       setError("");
+      await Promise.all([
+        loadCategories(),
+        loadCategoryConfig(String(payload?.categoryId || "")),
+      ]);
     } catch (err) {
       setError((err as Error).message);
     }
   };
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => {
+    load();
+  }, [id]);
+
+  const imageUrlsDefault = useMemo(
+    () => (product?.images || []).map((image) => image.url).filter(Boolean).join("\n"),
+    [product]
+  );
+
+  const shippingDefault = useMemo(
+    () => String(product?.shipping?.text || "").trim() || DEFAULT_SHIPPING_TEXT,
+    [product]
+  );
+  const returnPolicyTextDefault = useMemo(
+    () => String(product?.returnPolicy?.text || "").trim() || DEFAULT_RETURN_POLICY_TEXT,
+    [product]
+  );
+  const hasSavedReturnPolicyText = useMemo(
+    () => !!String(product?.returnPolicy?.text || "").trim(),
+    [product]
+  );
+  const returnableDefault = useMemo(
+    () => hasSavedReturnPolicyText ? !!product?.returnPolicy?.returnable : DEFAULT_RETURNABLE,
+    [hasSavedReturnPolicyText, product]
+  );
+  const returnWindowDaysDefault = useMemo(
+    () => hasSavedReturnPolicyText
+      ? Number(product?.returnPolicy?.windowDays || 0)
+      : DEFAULT_RETURN_WINDOW_DAYS,
+    [hasSavedReturnPolicyText, product]
+  );
+
+  const onTitleChange = (value: string) => {
+    setTitle(value);
+    if (!slugManuallyEdited) {
+      setSlug(slugify(value));
+    }
+  };
+
+  const onSlugChange = (value: string) => {
+    setSlug(value);
+    setSlugManuallyEdited(true);
+  };
+
+  const resetSlugToAuto = () => {
+    setSlug(slugify(title));
+    setSlugManuallyEdited(false);
+  };
+
+  const setDetailValue = (field: ProductFieldDefinition, value: unknown) => {
+    setDetails((prev) => ({
+      ...prev,
+      [field.key]: value,
+    }));
+  };
+
+  const onMultiEnumChange = (field: ProductFieldDefinition, event: ChangeEvent<HTMLSelectElement>) => {
+    setDetailValue(
+      field,
+      Array.from(event.target.selectedOptions).map((option) => option.value).filter(Boolean)
+    );
+  };
+
+  const onCategoryChange = async (categoryId: string) => {
+    setSelectedCategoryId(categoryId);
+    try {
+      await loadCategoryConfig(categoryId);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const renderDetailField = (field: ProductFieldDefinition) => {
+    const value = details[field.key];
+    const commonLabel = (
+      <>
+        {field.label}
+        {field.required ? " *" : ""}
+      </>
+    );
+
+    if (field.type === "boolean") {
+      return (
+        <label key={field.key}>
+          <input
+            type="checkbox"
+            checked={!!value}
+            onChange={(e) => setDetailValue(field, e.target.checked)}
+          />{" "}
+          {commonLabel}
+        </label>
+      );
+    }
+
+    if (field.type === "number") {
+      return (
+        <label key={field.key}>
+          {commonLabel}
+          <input
+            type="number"
+            value={value === undefined || value === null ? "" : String(value)}
+            onChange={(e) => setDetailValue(field, e.target.value === "" ? "" : Number(e.target.value))}
+          />
+        </label>
+      );
+    }
+
+    if (field.type === "enum" && field.multiValue) {
+      return (
+        <label key={field.key}>
+          {commonLabel}
+          <select
+            multiple
+            value={Array.isArray(value) ? value.map((item) => String(item)) : []}
+            onChange={(e) => onMultiEnumChange(field, e)}
+            style={{ minHeight: 120 }}
+          >
+            {field.options.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+
+    if (field.type === "enum") {
+      return (
+        <label key={field.key}>
+          {commonLabel}
+          <select
+            value={String(value || "")}
+            onChange={(e) => setDetailValue(field, e.target.value)}
+          >
+            <option value="">Select</option>
+            {field.options.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+
+    if (field.multiValue) {
+      return (
+        <label key={field.key}>
+          {commonLabel}
+          <textarea
+            rows={4}
+            value={detailValueToText(value)}
+            onChange={(e) => setDetailValue(field, parseLineList(e.target.value))}
+            placeholder="One value per line"
+          />
+        </label>
+      );
+    }
+
+    return (
+      <label key={field.key}>
+        {commonLabel}
+        <input
+          value={detailValueToText(value)}
+          onChange={(e) => setDetailValue(field, e.target.value)}
+        />
+      </label>
+    );
+  };
 
   const save = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!product) return;
+
     const form = new FormData(e.currentTarget);
+
     await apiRequest(`/api/admin/products/${id}`, {
       service: "product",
       method: "PUT",
       token: accessToken,
       onUnauthorized: refreshAccessToken,
       body: {
-        title: String(form.get("title") || ""),
-        slug: String(form.get("slug") || ""),
+        title,
+        slug,
         description: String(form.get("description") || ""),
         shortDescription: String(form.get("shortDescription") || ""),
+        categoryId: selectedCategoryId,
         currency: String(form.get("currency") || "INR"),
         tags: parseCsv(form.get("tags")),
-        occasionTags: parseCsv(form.get("occasionTags")),
-        materialProfile: {
-          fabric: String(form.get("fabric") || ""),
-          weave: String(form.get("weave") || ""),
-          workType: String(form.get("workType") || ""),
-          pattern: String(form.get("pattern") || ""),
-          borderStyle: String(form.get("borderStyle") || ""),
-          palluStyle: String(form.get("palluStyle") || ""),
+        images: parseImageUrls(String(form.get("imageUrls") || "")),
+        shipping: {
+          text: String(form.get("shippingText") || ""),
         },
-        blouseDefault: {
-          included: form.get("blouseIncluded") === "on",
-          type: String(form.get("blouseType") || ""),
-          lengthMeters: Number(form.get("blouseLengthMeters") || 0),
+        care: {
+          text: String(form.get("careText") || ""),
         },
-        careDefault: {
-          washCare: parseCsv(form.get("washCare")),
-          ironCare: String(form.get("ironCare") || ""),
-          bleach: String(form.get("bleach") || ""),
-          dryClean: String(form.get("dryClean") || ""),
-          dryInstructions: String(form.get("dryInstructions") || ""),
-        },
-        returnPolicyDefault: {
+        returnPolicy: {
+          text: String(form.get("returnPolicyText") || ""),
           returnable: form.get("returnable") === "on",
           windowDays: Number(form.get("windowDays") || 0),
-          type: String(form.get("returnType") || "none"),
-          notes: String(form.get("returnNotes") || ""),
         },
+        details,
+        isActive: form.get("isActive") === "on",
         isFeatured: form.get("isFeatured") === "on",
       },
     });
+
     load();
   };
 
@@ -130,65 +359,95 @@ export default function ProductDetailPage() {
         {error ? <div className="error">{error}</div> : null}
         {!product ? <div>Loading...</div> : (
           <form onSubmit={save} className="row" style={{ flexDirection: "column", alignItems: "stretch" }}>
-            <label>Title<input name="title" defaultValue={product.title} required /></label>
-            <label>Slug<input name="slug" defaultValue={product.slug} required /></label>
+            <label>
+              Title
+              <input
+                name="title"
+                value={title}
+                onChange={(e) => onTitleChange(e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Slug
+              <div className="row" style={{ gap: 8 }}>
+                <input
+                  name="slug"
+                  value={slug}
+                  onChange={(e) => onSlugChange(e.target.value)}
+                  required
+                  style={{ flex: 1 }}
+                />
+                <button type="button" className="secondary" onClick={resetSlugToAuto}>
+                  Reset Auto
+                </button>
+              </div>
+            </label>
             <label>Description<textarea name="description" defaultValue={product.description || ""} /></label>
             <label>Short Description<input name="shortDescription" defaultValue={product.shortDescription || ""} /></label>
             <label>Currency<input name="currency" defaultValue={product.currency || "INR"} /></label>
             <label>Tags (comma separated)<input name="tags" defaultValue={(product.tags || []).join(", ")} /></label>
-            <label>Occasions (comma separated)<input name="occasionTags" defaultValue={(product.occasionTags || []).join(", ")} /></label>
+            <label>Image URLs (one per line)<textarea name="imageUrls" rows={5} defaultValue={imageUrlsDefault} /></label>
 
-            <h3>Material Profile</h3>
-            <label>Fabric<input name="fabric" defaultValue={product.materialProfile?.fabric || ""} /></label>
-            <label>Weave<input name="weave" defaultValue={product.materialProfile?.weave || ""} /></label>
-            <label>Work Type<input name="workType" defaultValue={product.materialProfile?.workType || ""} /></label>
-            <label>Pattern<input name="pattern" defaultValue={product.materialProfile?.pattern || ""} /></label>
-            <label>Border Style<input name="borderStyle" defaultValue={product.materialProfile?.borderStyle || ""} /></label>
-            <label>Pallu Style<input name="palluStyle" defaultValue={product.materialProfile?.palluStyle || ""} /></label>
-
-            <h3>Blouse Default</h3>
-            <label><input type="checkbox" name="blouseIncluded" defaultChecked={!!product.blouseDefault?.included} /> Included</label>
-            <label>Type<input name="blouseType" defaultValue={product.blouseDefault?.type || ""} /></label>
-            <label>Length (meters)<input type="number" step="0.1" min="0" name="blouseLengthMeters" defaultValue={product.blouseDefault?.lengthMeters || 0} /></label>
-
-            <h3>Care Default</h3>
-            <label>Wash Care (comma separated)<input name="washCare" defaultValue={(product.careDefault?.washCare || []).join(", ")} /></label>
-            <label>Iron Care<input name="ironCare" defaultValue={product.careDefault?.ironCare || ""} /></label>
-            <label>Bleach<input name="bleach" defaultValue={product.careDefault?.bleach || ""} /></label>
-            <label>Dry Clean<input name="dryClean" defaultValue={product.careDefault?.dryClean || ""} /></label>
-            <label>Dry Instructions<input name="dryInstructions" defaultValue={product.careDefault?.dryInstructions || ""} /></label>
-
-            <h3>Return Policy Default</h3>
-            <label><input type="checkbox" name="returnable" defaultChecked={!!product.returnPolicyDefault?.returnable} /> Returnable</label>
-            <label>Window Days<input type="number" min="0" name="windowDays" defaultValue={product.returnPolicyDefault?.windowDays || 0} /></label>
-            <label>Type
-              <select name="returnType" defaultValue={product.returnPolicyDefault?.type || "none"}>
-                <option value="none">none</option>
-                <option value="exchange">exchange</option>
-                <option value="refund">refund</option>
-                <option value="exchange_or_refund">exchange_or_refund</option>
+            <label>
+              Category
+              <select
+                value={selectedCategoryId}
+                onChange={(e) => onCategoryChange(e.target.value)}
+                required
+              >
+                <option value="">Select category</option>
+                {categories.map((category) => (
+                  <option key={category._id} value={category._id}>{category.name}</option>
+                ))}
               </select>
             </label>
-            <label>Notes<textarea name="returnNotes" defaultValue={product.returnPolicyDefault?.notes || ""} /></label>
 
+            {categoryConfig.productFieldDefinitions.length ? (
+              <>
+                <h3>Category Fields</h3>
+                {categoryConfig.productFieldDefinitions.map(renderDetailField)}
+              </>
+            ) : null}
+
+            <h3>Shipping</h3>
+            <label>Shipping Text<textarea name="shippingText" rows={6} defaultValue={shippingDefault} /></label>
+
+            <h3>Care</h3>
+            <label>Care Text<textarea name="careText" rows={4} defaultValue={product.care?.text || ""} /></label>
+
+            <h3>Return Policy</h3>
+            <label>Return And Exchange Text<textarea name="returnPolicyText" rows={8} defaultValue={returnPolicyTextDefault} /></label>
+            <label><input type="checkbox" name="returnable" defaultChecked={returnableDefault} /> Returnable</label>
+            <label>Eligible Exchange Days<input type="number" min="0" name="windowDays" defaultValue={returnWindowDaysDefault} /></label>
+
+            <label><input type="checkbox" name="isActive" defaultChecked={!!product.isActive} /> Active</label>
             <label><input type="checkbox" name="isFeatured" defaultChecked={!!product.isFeatured} /> Featured</label>
             <div className="row">
               <button>Save</button>
-              <button
-                type="button"
-                className="danger"
-                onClick={async () => {
-                  await apiRequest(`/api/admin/products/${id}`, {
-                    service: "product",
-                    method: "DELETE",
-                    token: accessToken,
-                    onUnauthorized: refreshAccessToken,
-                  });
-                  router.push("/admin/products");
-                }}
-              >
-                Delete
-              </button>
+              {canDelete ? (
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={async () => {
+                    const ok = window.confirm(`Delete product "${product.title}"? This will permanently delete product, variants and stock.`);
+                    if (!ok) return;
+                    try {
+                      await apiRequest(`/api/admin/products/${id}`, {
+                        service: "product",
+                        method: "DELETE",
+                        token: accessToken,
+                        onUnauthorized: refreshAccessToken,
+                      });
+                      router.push("/admin/products");
+                    } catch (err) {
+                      setError((err as Error).message);
+                    }
+                  }}
+                >
+                  Delete
+                </button>
+              ) : null}
             </div>
           </form>
         )}

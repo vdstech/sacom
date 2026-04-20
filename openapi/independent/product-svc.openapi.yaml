@@ -22,6 +22,31 @@ paths:
     get:
       tags: [Storefront]
       summary: List storefront products
+      parameters:
+        - in: query
+          name: categoryId
+          schema: { type: string }
+        - in: query
+          name: facet.color.name
+          schema: { type: string }
+        - in: query
+          name: facet.blouse.type
+          schema: { type: string }
+        - in: query
+          name: minPrice
+          schema: { type: number }
+        - in: query
+          name: maxPrice
+          schema: { type: number }
+        - in: query
+          name: discountType
+          schema: { type: string, enum: [none, percent, flat] }
+        - in: query
+          name: discountMin
+          schema: { type: number }
+        - in: query
+          name: discountMax
+          schema: { type: number }
       responses:
         '200':
           description: Product list
@@ -31,6 +56,21 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/ProductListItem'
+  /products/facets:
+    get:
+      tags: [Storefront]
+      summary: List storefront facet metadata with counts
+      parameters:
+        - in: query
+          name: categoryId
+          schema: { type: string }
+      responses:
+        '200':
+          description: Facet list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductFacetResponse'
   /products/{slug}:
     parameters:
       - in: path
@@ -72,6 +112,31 @@ paths:
       tags: [Admin Products]
       summary: List admin products
       security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: categoryId
+          schema: { type: string }
+        - in: query
+          name: facet.color.name
+          schema: { type: string }
+        - in: query
+          name: facet.blouse.type
+          schema: { type: string }
+        - in: query
+          name: minPrice
+          schema: { type: number }
+        - in: query
+          name: maxPrice
+          schema: { type: number }
+        - in: query
+          name: discountType
+          schema: { type: string, enum: [none, percent, flat] }
+        - in: query
+          name: discountMin
+          schema: { type: number }
+        - in: query
+          name: discountMax
+          schema: { type: number }
       responses:
         '200':
           description: Product list
@@ -80,10 +145,27 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/ProductListItem'
+                  $ref: '#/components/schemas/AdminProductListItem'
+  /api/admin/products/facets:
+    get:
+      tags: [Admin Products]
+      summary: List admin facet metadata with counts
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: categoryId
+          schema: { type: string }
+      responses:
+        '200':
+          description: Facet list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductFacetResponse'
     post:
       tags: [Admin Products]
       summary: Create product
+      description: Slug is optional. If missing/blank or colliding, service auto-generates a unique slug with numeric suffixes.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -97,7 +179,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProductDocument'
+                $ref: '#/components/schemas/AdminProductDetail'
   /api/admin/products/{id}:
     parameters:
       - in: path
@@ -119,6 +201,7 @@ paths:
     put:
       tags: [Admin Products]
       summary: Update product
+      description: Slug collisions are auto-resolved. If slug is omitted/blank and title changed, slug is regenerated from title.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -182,7 +265,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/VariantWithInventory'
+                  $ref: '#/components/schemas/AdminVariantListItem'
     post:
       tags: [Admin Variants]
       summary: Create variant for product
@@ -295,6 +378,20 @@ components:
           type: string
           enum: [none, exchange, refund, exchange_or_refund]
         notes: { type: string }
+    ProductShipping:
+      type: object
+      properties:
+        text: { type: string }
+    ProductCare:
+      type: object
+      properties:
+        text: { type: string }
+    ProductReturnPolicy:
+      type: object
+      properties:
+        text: { type: string }
+        returnable: { type: boolean }
+        windowDays: { type: number }
     MaterialProfile:
       type: object
       properties:
@@ -304,38 +401,11 @@ components:
         pattern: { type: string }
         borderStyle: { type: string }
         palluStyle: { type: string }
-    BlouseInfo:
-      type: object
-      properties:
-        included: { type: boolean }
-        type: { type: string }
-        lengthMeters: { type: number }
-    SareeSpec:
-      type: object
-      properties:
-        lengthMeters: { type: number }
-        widthMeters: { type: number }
-        weightGrams: { type: number }
-        fallPicoDone: { type: boolean }
-        stitchReady: { type: boolean }
     VariantMerchandise:
       type: object
-      required: [color]
       properties:
         color:
-          allOf:
-            - $ref: '#/components/schemas/ColorInfo'
-          required: [name]
-        size:
-          type: object
-          properties:
-            label: { type: string }
-            system: { type: string }
-            sortKey: { type: number }
-        blouse:
-          $ref: '#/components/schemas/BlouseInfo'
-        saree:
-          $ref: '#/components/schemas/SareeSpec'
+          $ref: '#/components/schemas/ColorInfo'
         style:
           type: object
           properties:
@@ -344,22 +414,18 @@ components:
               items: { type: string }
             workType: { type: string }
             pattern: { type: string }
-        careOverride:
-          $ref: '#/components/schemas/CarePolicy'
-        returnPolicyOverride:
-          $ref: '#/components/schemas/ReturnPolicy'
+      additionalProperties: true
     ProductWriteRequest:
       type: object
-      required: [title, primaryCategoryId]
+      required: [title, categoryId]
       properties:
         title: { type: string }
-        slug: { type: string }
+        slug:
+          type: string
+          description: Optional. If omitted/blank, service derives from title and auto-resolves collisions using numeric suffixes.
         description: { type: string }
         shortDescription: { type: string }
-        primaryCategoryId: { type: string }
-        categoryIds:
-          type: array
-          items: { type: string }
+        categoryId: { type: string }
         tags:
           type: array
           items: { type: string }
@@ -372,22 +438,17 @@ components:
               url: { type: string }
               alt: { type: string }
               sortOrder: { type: number }
-        materialProfile:
-          $ref: '#/components/schemas/MaterialProfile'
-        occasionTags:
-          type: array
-          items: { type: string }
-        blouseDefault:
-          $ref: '#/components/schemas/BlouseInfo'
-        careDefault:
-          $ref: '#/components/schemas/CarePolicy'
-        returnPolicyDefault:
-          $ref: '#/components/schemas/ReturnPolicy'
+        shipping:
+          $ref: '#/components/schemas/ProductShipping'
+        care:
+          $ref: '#/components/schemas/ProductCare'
+        returnPolicy:
+          $ref: '#/components/schemas/ProductReturnPolicy'
+        details:
+          type: object
+          additionalProperties: true
         isActive: { type: boolean }
         isFeatured: { type: boolean }
-        sortOrder: { type: number }
-        seoTitle: { type: string }
-        seoDescription: { type: string }
     ProductDocument:
       allOf:
         - $ref: '#/components/schemas/ProductWriteRequest'
@@ -410,33 +471,85 @@ components:
               name: { type: string }
               hex: { type: string }
         hasMultipleColors: { type: boolean }
-    ProductListItem:
-      allOf:
-        - $ref: '#/components/schemas/ProductDocument'
-        - type: object
+    Discount:
+      type: object
+      properties:
+        type: { type: string, enum: [none, percent, flat] }
+        value: { type: number }
+        label: { type: string }
+    ProductFacetResponse:
+      type: object
+      properties:
+        categoryId: { type: string }
+        categorySlug: { type: string }
+        priceRange:
+          type: object
+          nullable: true
           properties:
-            minPrice: { type: number, nullable: true }
-            maxPrice: { type: number, nullable: true }
-            availability: { type: boolean }
-            colorSummary:
-              $ref: '#/components/schemas/ColorSummary'
+            min: { type: number }
+            max: { type: number }
+        facets:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              label: { type: string }
+              type: { type: string, enum: [enum, boolean] }
+              scope: { type: string, enum: [variant], default: variant }
+              valueType: { type: string, enum: [string, number, boolean, string_array] }
+              multiSelect: { type: boolean }
+              showOther: { type: boolean }
+              options:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    value: { type: string }
+                    label: { type: string }
+                    count: { type: number }
+              other:
+                type: object
+                nullable: true
+                properties:
+                  value: { type: string }
+                  label: { type: string }
+                  count: { type: number }
+    ProductListItem:
+      type: object
+      properties:
+        _id: { type: string }
+        title: { type: string }
+        slug: { type: string }
+        shortDescription: { type: string }
+        currency: { type: string }
+        care:
+          $ref: '#/components/schemas/ProductCare'
+        returnPolicy:
+          $ref: '#/components/schemas/ProductReturnPolicy'
+        defaultVariant:
+          $ref: '#/components/schemas/DefaultVariant'
+        availability: { type: boolean }
+        colorSummary:
+          $ref: '#/components/schemas/ColorSummary'
+        otherVariantColors:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              hex: { type: string }
     VariantDocument:
       type: object
       properties:
         _id: { type: string }
         productId: { type: string }
-        sku: { type: string }
         price: { type: number }
         mrp: { type: number }
         compareAtPrice: { type: number }
+        discount:
+          $ref: '#/components/schemas/Discount'
         barcode: { type: string }
-        weightKg: { type: number }
-        dimensionsCm:
-          type: object
-          properties:
-            l: { type: number }
-            w: { type: number }
-            h: { type: number }
         images:
           type: array
           items:
@@ -447,6 +560,10 @@ components:
               sortOrder: { type: number }
         merchandise:
           $ref: '#/components/schemas/VariantMerchandise'
+        sizeRows:
+          type: array
+          items:
+            $ref: '#/components/schemas/SizeRowRead'
         isDefault: { type: boolean }
         isActive: { type: boolean }
         sortOrder: { type: number }
@@ -468,9 +585,10 @@ components:
       type: object
       properties:
         _id: { type: string }
-        sku: { type: string }
+        stockKey: { type: string }
         productId: { type: string }
         variantId: { type: string }
+        sizeRowId: { type: string }
         trackInventory: { type: boolean }
         availableQty: { type: number }
         reservedQty: { type: number }
@@ -504,20 +622,14 @@ components:
           $ref: '#/components/schemas/InventoryFulfillment'
     VariantWriteRequest:
       type: object
-      required: [sku, price, merchandise]
+      required: [price, merchandise, sizeRows]
       properties:
-        sku: { type: string }
         price: { type: number }
         mrp: { type: number }
         compareAtPrice: { type: number }
+        discount:
+          $ref: '#/components/schemas/Discount'
         barcode: { type: string }
-        weightKg: { type: number }
-        dimensionsCm:
-          type: object
-          properties:
-            l: { type: number }
-            w: { type: number }
-            h: { type: number }
         images:
           type: array
           items:
@@ -528,11 +640,17 @@ components:
               sortOrder: { type: number }
         merchandise:
           $ref: '#/components/schemas/VariantMerchandise'
+        sizeRows:
+          type: array
+          description: >
+            Per-size rows. size.label must match configured category size facet enum values
+            (size/size.label). Missing enum sizes are auto-created with availableQty=0.
+            If size facet is missing/empty, only fallback size FREE is accepted.
+          items:
+            $ref: '#/components/schemas/SizeRowWriteRequest'
         isDefault: { type: boolean }
         isActive: { type: boolean }
         sortOrder: { type: number }
-        inventory:
-          $ref: '#/components/schemas/InventoryPatchRequest'
     VariantWithInventory:
       allOf:
         - $ref: '#/components/schemas/VariantDocument'
@@ -540,7 +658,207 @@ components:
           properties:
             inventory:
               $ref: '#/components/schemas/InventoryDocument'
-            effectiveCare:
-              $ref: '#/components/schemas/CarePolicy'
             effectiveReturnPolicy:
               $ref: '#/components/schemas/ReturnPolicy'
+    ProductDetail:
+      type: object
+      properties:
+        _id: { type: string }
+        title: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        shortDescription: { type: string }
+        currency: { type: string }
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              alt: { type: string }
+              sortOrder: { type: number }
+        shipping:
+          $ref: '#/components/schemas/ProductShipping'
+        care:
+          $ref: '#/components/schemas/ProductCare'
+        returnPolicy:
+          $ref: '#/components/schemas/ProductReturnPolicy'
+        details:
+          type: object
+          additionalProperties: true
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/StorefrontVariantListItem'
+        defaultVariant:
+          $ref: '#/components/schemas/DefaultVariant'
+        availability: { type: boolean }
+        colorSummary:
+          $ref: '#/components/schemas/ColorSummary'
+        otherVariantColors:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              hex: { type: string }
+    DefaultVariant:
+      type: object
+      properties:
+        variantId: { type: string }
+        isDefault: { type: boolean }
+        price: { type: number }
+        effectivePrice: { type: number }
+        mrp: { type: number }
+        compareAtPrice: { type: number }
+        discount:
+          $ref: '#/components/schemas/Discount'
+        imageUrl: { type: string }
+        colorName: { type: string }
+        colorHex: { type: string }
+        sizeLabel: { type: string }
+    MinimalInventory:
+      type: object
+      properties:
+        _id: { type: string }
+        stockKey: { type: string }
+        sizeRowId: { type: string }
+        availableQty: { type: number }
+        reservedQty: { type: number }
+        allowBackorder: { type: boolean }
+        reorderLevel: { type: number }
+    SizeRowSize:
+      type: object
+      properties:
+        label:
+          type: string
+          description: Canonical size value (facet enum value, or FREE fallback).
+        system: { type: string }
+        sortKey: { type: number }
+    SizeRowWriteRequest:
+      type: object
+      properties:
+        rowId: { type: string }
+        size:
+          $ref: '#/components/schemas/SizeRowSize'
+        stockKey: { type: string }
+        isActive: { type: boolean }
+        sortOrder: { type: number }
+        inventory:
+          $ref: '#/components/schemas/InventoryPatchRequest'
+    SizeRowRead:
+      type: object
+      properties:
+        rowId: { type: string }
+        size:
+          $ref: '#/components/schemas/SizeRowSize'
+        stockKey: { type: string }
+        isActive: { type: boolean }
+        sortOrder: { type: number }
+        inventory:
+          $ref: '#/components/schemas/MinimalInventory'
+        availability: { type: boolean }
+        effectiveReturnPolicy:
+          $ref: '#/components/schemas/ReturnPolicy'
+    StorefrontVariantListItem:
+      type: object
+      properties:
+        _id: { type: string }
+        price: { type: number }
+        effectivePrice: { type: number }
+        isDefault: { type: boolean }
+        isActive: { type: boolean }
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              alt: { type: string }
+              sortOrder: { type: number }
+        merchandise:
+          $ref: '#/components/schemas/VariantMerchandise'
+        sizeRows:
+          type: array
+          items:
+            $ref: '#/components/schemas/SizeRowRead'
+        availability: { type: boolean }
+        effectiveReturnPolicy:
+          $ref: '#/components/schemas/ReturnPolicy'
+    AdminProductListItem:
+      type: object
+      properties:
+        _id: { type: string }
+        title: { type: string }
+        slug: { type: string }
+        isActive: { type: boolean }
+        isFeatured: { type: boolean }
+        defaultVariant:
+          $ref: '#/components/schemas/DefaultVariant'
+        colorSummary:
+          $ref: '#/components/schemas/ColorSummary'
+        care:
+          $ref: '#/components/schemas/ProductCare'
+        returnPolicy:
+          $ref: '#/components/schemas/ProductReturnPolicy'
+    AdminProductDetail:
+      type: object
+      properties:
+        _id: { type: string }
+        title: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        shortDescription: { type: string }
+        categoryId: { type: string }
+        currency: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              alt: { type: string }
+              sortOrder: { type: number }
+        shipping:
+          $ref: '#/components/schemas/ProductShipping'
+        care:
+          $ref: '#/components/schemas/ProductCare'
+        returnPolicy:
+          $ref: '#/components/schemas/ProductReturnPolicy'
+        details:
+          type: object
+          additionalProperties: true
+        isFeatured: { type: boolean }
+        isActive: { type: boolean }
+    AdminVariantListItem:
+      type: object
+      properties:
+        _id: { type: string }
+        productId: { type: string }
+        price: { type: number }
+        mrp: { type: number }
+        compareAtPrice: { type: number }
+        discount:
+          $ref: '#/components/schemas/Discount'
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              alt: { type: string }
+              sortOrder: { type: number }
+        merchandise:
+          $ref: '#/components/schemas/VariantMerchandise'
+        sizeRows:
+          type: array
+          items:
+            $ref: '#/components/schemas/SizeRowRead'
+        isDefault: { type: boolean }
+        isActive: { type: boolean }
+        sortOrder: { type: number }
+        effectiveReturnPolicy:
+          $ref: '#/components/schemas/ReturnPolicy'

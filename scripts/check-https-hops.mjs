@@ -4,12 +4,10 @@ const rows = [
   { owner: "auth-svc", hop: "direct", endpoint: "https://localhost:4443/health" },
   { owner: "catalog-svc", hop: "direct", endpoint: "https://localhost:4444/health" },
   { owner: "product-svc", hop: "direct", endpoint: "https://localhost:4445/health" },
-  { owner: "navigation-svc", hop: "direct", endpoint: "https://localhost:4446/health" },
   { owner: "gateway-svc", hop: "direct", endpoint: "https://localhost:4000/health" },
   { owner: "gateway->auth", hop: "proxy", endpoint: "https://localhost:4000/api/me" },
   { owner: "gateway->catalog", hop: "proxy", endpoint: "https://localhost:4000/api/categories" },
   { owner: "gateway->product", hop: "proxy", endpoint: "https://localhost:4000/api/admin/products" },
-  { owner: "gateway->navigation", hop: "proxy", endpoint: "https://localhost:4000/api/admin/navigation/items" },
   { owner: "admin->gateway auth", hop: "proxy", endpoint: "https://localhost:3000/auth/refresh" },
   { owner: "admin->gateway api", hop: "proxy", endpoint: "https://localhost:3000/api/me" },
 ];

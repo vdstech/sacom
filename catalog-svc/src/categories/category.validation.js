@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { validateFilterConfig } from "./filterConfig.js";
 
 function isNonEmptyString(v) {
   return typeof v === "string" && v.trim().length > 0;
@@ -21,6 +22,10 @@ export function validateCreate(req, res, next) {
   if (!isValidParent(parent)) {
     return res.status(400).json({ error: "parent must be a valid category id if provided" });
   }
+  if (req.body.filterConfig !== undefined) {
+    const { errors } = validateFilterConfig(req.body.filterConfig);
+    if (errors.length) return res.status(400).json({ error: errors.join("; ") });
+  }
   next();
 }
 
@@ -35,6 +40,10 @@ export function validateUpdate(req, res, next) {
   }
   if (!isValidParent(parent)) {
     return res.status(400).json({ error: "parent must be a valid category id if provided" });
+  }
+  if (req.body.filterConfig !== undefined) {
+    const { errors } = validateFilterConfig(req.body.filterConfig);
+    if (errors.length) return res.status(400).json({ error: errors.join("; ") });
   }
   next();
 }

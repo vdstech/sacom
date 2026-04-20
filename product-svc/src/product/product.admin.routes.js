@@ -10,6 +10,7 @@ import { listInventory, updateInventory } from "../inventory/inventory.controlle
 const router = Router();
 
 router.get("/", requireAuth, requiresPermission("product:read"), ctrl.adminList);
+router.get("/facets", requireAuth, requiresPermission("product:read"), ctrl.adminFacets);
 router.get("/inventory/list", requireAuth, requiresPermission("inventory:read"), listInventory);
 router.patch("/inventory/:id", requireAuth, requiresPermission("inventory:write"), updateInventory);
 router.post("/", requireAuth, requiresPermission("product:write"), validateCreate, ctrl.create);

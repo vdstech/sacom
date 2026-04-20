@@ -35,6 +35,88 @@ const CategorySchema = new mongoose.Schema(
     seoTitle: { type: String, default: "" },
     seoDescription: { type: String, default: "" },
 
+    filterConfig: {
+      version: { type: Number, default: 1 },
+      productFieldDefinitions: {
+        type: [
+          {
+            key: { type: String, required: true },
+            label: { type: String, default: "" },
+            type: { type: String, enum: ["enum", "text", "number", "boolean"], default: "text" },
+            required: { type: Boolean, default: false },
+            multiValue: { type: Boolean, default: false },
+            sortOrder: { type: Number, default: 0 },
+            options: {
+              type: [
+                {
+                  value: { type: String, required: true },
+                  label: { type: String, default: "" },
+                  sortOrder: { type: Number, default: 0 },
+                  enabled: { type: Boolean, default: true },
+                },
+              ],
+              default: [],
+            },
+          },
+        ],
+        default: [],
+      },
+      variantFieldDefinitions: {
+        type: [
+          {
+            key: { type: String, required: true },
+            label: { type: String, default: "" },
+            type: { type: String, enum: ["enum", "text", "number", "boolean"], default: "text" },
+            required: { type: Boolean, default: false },
+            multiValue: { type: Boolean, default: false },
+            sortOrder: { type: Number, default: 0 },
+            options: {
+              type: [
+                {
+                  value: { type: String, required: true },
+                  label: { type: String, default: "" },
+                  sortOrder: { type: Number, default: 0 },
+                  enabled: { type: Boolean, default: true },
+                },
+              ],
+              default: [],
+            },
+          },
+        ],
+        default: [],
+      },
+      variantOptions: {
+        size: {
+          enabled: { type: Boolean, default: false },
+          options: {
+            type: [
+              {
+                value: { type: String, required: true },
+                label: { type: String, default: "" },
+                sortOrder: { type: Number, default: 0 },
+                enabled: { type: Boolean, default: true },
+              },
+            ],
+            default: [],
+          },
+        },
+        color: {
+          enabled: { type: Boolean, default: false },
+          options: {
+            type: [
+              {
+                value: { type: String, required: true },
+                label: { type: String, default: "" },
+                sortOrder: { type: Number, default: 0 },
+                enabled: { type: Boolean, default: true },
+              },
+            ],
+            default: [],
+          },
+        },
+      },
+    },
+
     // Audit
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
@@ -49,6 +131,8 @@ CategorySchema.index({ parent: 1, slug: 1 }, { unique: true });
 CategorySchema.index({ isActive: 1, sortOrder: 1 });
 CategorySchema.index({ ancestors: 1 });
 CategorySchema.index({ path: 1 });
+CategorySchema.index({ "filterConfig.productFieldDefinitions.key": 1 });
+CategorySchema.index({ "filterConfig.variantFieldDefinitions.key": 1 });
 
 // Pre-validate: ensure slug exists
 CategorySchema.pre("validate", function (next) {

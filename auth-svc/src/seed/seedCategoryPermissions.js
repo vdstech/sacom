@@ -45,11 +45,6 @@ export async function seedCategoryPermissions() {
     { code: "order:read", description: "View orders" },
     { code: "order:write", description: "Create/update orders" },
     { code: "order:delete", description: "Delete/cancel orders" },
-    { code: "nav:read", description: "View nav list/tree/details" },
-    { code: "nav:write", description: "Create/update nav" },
-    { code: "nav:delete", description: "Delete nav" },
-    { code: "nav:publish", description: "Enable/disable nav" },
-    { code: "nav:reorder", description: "Move/reorder in nav tree" },
   ];
 
   const leafPerms = [];
@@ -57,17 +52,6 @@ export async function seedCategoryPermissions() {
     const p = await upsertPermission({ ...def, children: [] });
     leafPerms.push(p);
   }
-
-  const groupPerm = await upsertPermission({
-    code: "nav:all",
-    description: "All nav permissions",
-    children: leafPerms.map((p) => p._id),
-  });
-
-  await Permission.updateOne(
-    { _id: groupPerm._id },
-    { $set: { children: leafPerms.map((p) => p._id) } }
-  );
 
   const leafIds = leafPerms.map((p) => p._id);
   await addPermsToRole("SUPER_ADMIN", leafIds);

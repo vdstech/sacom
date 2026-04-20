@@ -8,7 +8,6 @@ const serviceEnvFiles = [
   "auth-svc/.env",
   "catalog-svc/.env",
   "product-svc/.env",
-  "navigation-svc/.env",
 ];
 
 function parseEnv(filePath) {

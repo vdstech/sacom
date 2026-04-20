@@ -14,6 +14,11 @@ import meRouter from './auth/routes/meRoute.js'
 import authRouter from './auth/routes/authRoute.js';
 import sessionRouter from './auth/routes/sessionRoute.js'
 import permissionRouter from './auth/routes/permissionsRoute.js'
+import customerAuthRouter from "./customer/routes/customerAuthRoute.js";
+import customerMeRouter from "./customer/routes/customerMeRoute.js";
+import customerAddressRouter from "./customer/routes/customerAddressRoute.js";
+import customerWishlistRouter from "./customer/routes/customerWishlistRoute.js";
+import customerOrderRouter from "./customer/routes/customerOrderRoute.js";
 import { validateRequiredEnv } from './config/validateRequiredEnv.js'
 
 const app = express()
@@ -60,8 +65,13 @@ app.use('/api/admin/users', adminUsers)
 app.use('/api/', meRouter)
 app.use('/auth', authRouter)
 app.use('/', authRouter)
+app.use('/auth/customer', customerAuthRouter)
 app.use('/auth/session', sessionRouter)
 app.use('/api/admin/permissions', permissionRouter)
+app.use('/api/customer/me', customerMeRouter)
+app.use('/api/customer/addresses', customerAddressRouter)
+app.use('/api/customer/wishlist', customerWishlistRouter)
+app.use('/api/customer/orders', customerOrderRouter)
 
 // Deprecated: product routes moved behind gateway to product-svc
 app.use('/products', (req, res) => {

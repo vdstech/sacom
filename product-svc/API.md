@@ -1,146 +1,206 @@
 # Product Service API
 
 ## Ownership
-- `products` collection: core product content + defaults (`materialProfile`, `careDefault`, `returnPolicyDefault`).
-- `product_variants` collection: sellable choices and color/size source of truth (`merchandise`).
-- `inventory` collection: stock + operational snapshot (`display`, `care`, `returnPolicy`, `fulfillment`).
+- `products`: product-level content such as title, slug, descriptions, category, shipping, care, return policy, and generic details
+- `product_variants`: sellable variant data such as price, discount, colors, images, stock rows, and variant details
+- `inventory`: operational stock snapshot used by admin inventory flows
 
-## Color swatch contract
-Color display is derived from active variants.
+## Runtime
+- Local HTTPS port: `4445`
+- Mounted behind gateway at:
+  - `/products`
+  - `/products/facets`
+  - `/categories/:slug/products`
+  - `/cart`
+  - `/api/admin/products`
 
-- `variant.merchandise.color.name` is required.
-- `variant.merchandise.color.hex` is optional swatch color.
-- `GET /products` and `GET /products/:slug` return:
-  - `colorSummary.colorNames: string[]`
-  - `colorSummary.swatches: [{ name, hex? }]`
-  - `colorSummary.hasMultipleColors: boolean`
-
-Swatch rules:
-1. only active variants
-2. dedupe by case-insensitive color name
-3. order by default variant first, then `sortOrder`, then `createdAt`
-4. first matching variant wins when same name has different hex
-
-## Admin write APIs
-
-### POST `/api/admin/products`
-Create product with canonical defaults.
-
-```json
-{
-  "title": "Silk Saree",
-  "slug": "silk-saree",
-  "primaryCategoryId": "<ObjectId>",
-  "categoryIds": ["<ObjectId>"],
-  "materialProfile": {
-    "fabric": "Kanchipuram silk",
-    "weave": "Handloom",
-    "workType": "Zari",
-    "pattern": "Traditional",
-    "borderStyle": "Temple",
-    "palluStyle": "Rich pallu"
-  },
-  "occasionTags": ["Wedding", "Festive"],
-  "blouseDefault": {
-    "included": true,
-    "type": "Unstitched",
-    "lengthMeters": 0.8
-  },
-  "careDefault": {
-    "washCare": ["Dry clean only"],
-    "ironCare": "Low heat reverse",
-    "bleach": "Do not bleach",
-    "dryClean": "Recommended",
-    "dryInstructions": "Dry in shade"
-  },
-  "returnPolicyDefault": {
-    "returnable": true,
-    "windowDays": 7,
-    "type": "exchange_or_refund",
-    "notes": "Unused products only"
-  }
-}
-```
-
-### PUT `/api/admin/products/:id`
-Update product. Same canonical fields as create.
-
-### POST `/api/admin/products/:id/variants`
-Create variant with canonical merchandise and optional initial inventory.
-
-```json
-{
-  "sku": "SR-RED-001",
-  "price": 1999,
-  "mrp": 2499,
-  "merchandise": {
-    "color": { "name": "Red", "family": "Warm", "hex": "#C62828" },
-    "size": { "label": "Free", "system": "IN", "sortKey": 0 },
-    "blouse": { "included": true, "type": "Unstitched", "lengthMeters": 0.8 },
-    "saree": {
-      "lengthMeters": 5.5,
-      "widthMeters": 1.2,
-      "weightGrams": 700,
-      "fallPicoDone": false,
-      "stitchReady": false
-    },
-    "style": { "occasionTags": ["Wedding"], "workType": "Zari", "pattern": "Traditional" }
-  },
-  "inventory": {
-    "trackInventory": true,
-    "availableQty": 10,
-    "reservedQty": 0,
-    "allowBackorder": false,
-    "reorderLevel": 2,
-    "display": { "colorName": "Red", "sizeLabel": "Free", "materialLabel": "Silk" },
-    "care": {
-      "washCare": ["Dry clean only"],
-      "ironCare": "Low",
-      "bleach": "No",
-      "dryClean": "Yes",
-      "dryInstructions": "Shade"
-    },
-    "returnPolicy": {
-      "returnable": true,
-      "windowDays": 7,
-      "type": "exchange_or_refund",
-      "notes": "Unused"
-    }
-  }
-}
-```
-
-### PATCH `/api/admin/products/:id/variants/:variantId`
-Update variant. Supports canonical merchandise fields and optional `inventory` snapshot patch.
-
-### PATCH `/api/admin/products/inventory/:id`
-Update stock + operational snapshot (`display`, `care`, `returnPolicy`, `fulfillment`).
-
-## Storefront read APIs
+## Storefront Read APIs
 
 ### GET `/products`
-List products with `minPrice`, `maxPrice`, `availability`, and `colorSummary`.
+List storefront products.
+
+Supports:
+- `categoryId=<ObjectId>`
+- `categorySlug=<slug>`
+- `featured=true`
+- `facet.<key>=value1,value2`
+- `minPrice=<number>`
+- `maxPrice=<number>`
+- `discountType=none|percent|flat`
+- `discountMin=<number>`
+- `discountMax=<number>`
+- `limit=<number>`
+
+List item shape:
+- `_id`
+- `title`
+- `slug`
+- `categoryId`
+- `categorySlug`
+- `shortDescription`
+- `currency`
+- `defaultVariant`
+- `care`
+- `returnPolicy`
+- `availability`
+- `colorSummary`
+- `otherVariantColors`
+
+`defaultVariant` includes:
+- `variantId`
+- `price`
+- `effectivePrice`
+- `discount`
+- `imageUrl`
+- `colors`
+- `sizeLabel`
 
 ### GET `/products/:slug`
-Returns product + active variants + per-variant inventory + effective policies:
-- `effectiveCare`: `inventory.care` -> `variant.merchandise.careOverride` -> `product.careDefault`
-- `effectiveReturnPolicy`: `inventory.returnPolicy` -> `variant.merchandise.returnPolicyOverride` -> `product.returnPolicyDefault`
+Storefront product detail.
+
+Product shape includes:
+- `_id`
+- `title`
+- `slug`
+- `categorySlug`
+- `description`
+- `shortDescription`
+- `currency`
+- `images`
+- `shipping`
+- `care`
+- `returnPolicy`
+- `details`
+- `defaultVariant`
+- `variants`
+
+Variant shape includes:
+- `_id`
+- `price`
+- `effectivePrice`
+- `discount`
+- `isDefault`
+- `isActive`
+- `images`
+- `colors`
+- `sizeLabel`
+- `details`
+- `stock`
+- `availability`
 
 ### GET `/categories/:slug/products`
-Category-scope list with same product list payload shape.
+Category-scoped list with the same payload shape as `GET /products`.
 
-## Validation rules
-- `merchandise.color.name` required for variant create.
-- `merchandise.color.hex` must be `#RGB` or `#RRGGBB` when provided.
-- Numeric quantities/dimensions must be non-negative.
-- Return policy consistency:
-  - `returnable=false` -> `windowDays=0`, `type=none`
-  - `returnable=true` -> `windowDays>=1`
+### GET `/products/facets`
+Facet metadata for the current category/filter state.
 
-## Additional admin APIs
+Response envelope:
+- `categoryId`
+- `categorySlug`
+- `priceRange`
+- `facets`
+
+`priceRange` shape:
+- `min`
+- `max`
+
+`priceRange` is derived from category-wide effective prices and is not narrowed by the currently selected facet or price filters.
+
+Facet shape:
+- `key`
+- `label`
+- `type`
+- `scope`
+- `multiSelect`
+- `options[]`
+
+Option shape:
+- `value`
+- `label`
+- `count`
+
+Facet types currently used by the storefront:
+- `enum`
+- `boolean`
+
+## Cart APIs
+- `GET /cart`
+- `POST /cart/items`
+- `PATCH /cart/items/:itemId`
+- `DELETE /cart/items/:itemId`
+
+Cart response includes:
+- `cartToken`
+- `itemCount`
+- `subtotal`
+- `items`
+- `expiresAt`
+- `warnings`
+
+## Admin APIs
+
+### Product endpoints
 - `GET /api/admin/products`
 - `GET /api/admin/products/:id`
+- `POST /api/admin/products`
+- `PUT /api/admin/products/:id`
 - `PATCH /api/admin/products/:id/publish`
 - `DELETE /api/admin/products/:id`
+- `GET /api/admin/products/facets`
+
+### Variant endpoints
 - `GET /api/admin/products/:id/variants`
+- `POST /api/admin/products/:id/variants`
+- `PATCH /api/admin/products/:id/variants/:variantId`
+
+### Inventory endpoints
 - `GET /api/admin/products/inventory/list`
+- `PATCH /api/admin/products/inventory/:id`
+
+## Admin Write Model
+
+### Product create/update
+Core fields:
+- `title`
+- `slug`
+- `categoryId`
+- `tags`
+- `currency`
+- `description`
+- `shortDescription`
+- `images`
+- `shipping.text`
+- `care.text`
+- `returnPolicy.text`
+- `returnPolicy.returnable`
+- `returnPolicy.windowDays`
+- `details`
+- `isFeatured`
+- `isActive`
+
+### Variant create/update
+Core fields:
+- `price`
+- `discount`
+- `images`
+- `colors`
+- `details`
+- `stock`
+- `isDefault`
+- `isActive`
+
+`discount` shape:
+- `type`: `none | percent | flat`
+- `value`
+- `label`
+
+`stock[]` row shape:
+- `stockKey`
+- `sizeLabel`
+- `quantity`
+- `reorderLevel`
+
+## Notes
+- Storefront responses are DTO-shaped; internal Mongo fields and removed legacy fields are not exposed
+- Product list/detail responses carry the real `categorySlug` used by the storefront
+- Pricing display should be based on `price`, `effectivePrice`, and `discount`

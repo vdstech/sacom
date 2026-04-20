@@ -17,7 +17,6 @@ export const MENU_ITEMS: MenuItem[] = [
   { href: "/admin/categories", label: "Categories", anyOf: ["category:read", "category:write", "category:delete"] },
   { href: "/admin/products", label: "Products", anyOf: ["product:read", "product:write", "product:delete", "product:publish"] },
   { href: "/admin/inventory", label: "Inventory", anyOf: ["inventory:read", "inventory:write"] },
-  { href: "/admin/navigation", label: "Navigation", anyOf: ["nav:read", "nav:write", "nav:delete", "nav:reorder"] },
   { href: "/admin/system/health", label: "System Health", anyOf: ["user:read", "role:read", "product:read"] },
   { href: "/admin/audit", label: "Audit", anyOf: ["user:read", "role:read", "product:read"] },
 ];

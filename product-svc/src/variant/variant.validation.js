@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const RETURN_TYPES = new Set(["none", "exchange", "refund", "exchange_or_refund"]);
+const DISCOUNT_TYPES = new Set(["none", "percent", "flat"]);
 const HEX_COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 function asNumber(value) {
@@ -8,83 +8,154 @@ function asNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
-function validateReturnPolicy(policy, label) {
-  if (!policy || typeof policy !== "object") return null;
+function validateDiscount(discount) {
+  if (discount === undefined) return null;
+  if (!discount || typeof discount !== "object") {
+    return "discount must be an object";
+  }
 
-  const returnable = policy.returnable === undefined ? undefined : !!policy.returnable;
-  const windowDays = policy.windowDays === undefined ? undefined : asNumber(policy.windowDays);
-  const type = policy.type === undefined ? undefined : String(policy.type || "").trim();
+  const discountType = String(discount.type || "none").trim();
+  const discountValue = asNumber(discount.value === undefined ? 0 : discount.value);
+  if (!DISCOUNT_TYPES.has(discountType)) {
+    return "discount.type must be one of: none, percent, flat";
+  }
+  if (discountValue === null || discountValue < 0) {
+    return "discount.value must be a non-negative number";
+  }
+  if (discountType === "percent" && discountValue > 100) {
+    return "discount.value must be <= 100 for percent type";
+  }
+  return null;
+}
 
-  if (windowDays !== undefined && (windowDays === null || windowDays < 0)) {
-    return `${label}.windowDays must be a non-negative number`;
+function validateColor(color) {
+  if (color === undefined || color === null || color === "") return null;
+  if (typeof color === "string") return null;
+  if (!color || typeof color !== "object") {
+    return "color must be a string or an object";
   }
-  if (type !== undefined && !RETURN_TYPES.has(type)) {
-    return `${label}.type must be one of: none, exchange, refund, exchange_or_refund`;
+  const hex = color.hex;
+  if (hex && !HEX_COLOR_RE.test(String(hex).trim())) {
+    return "color.hex must be a valid hex color (#RGB or #RRGGBB)";
   }
-  if (returnable === false && windowDays !== undefined && windowDays > 0) {
-    return `${label}.windowDays must be 0 when returnable is false`;
+  return null;
+}
+
+function validateColors(colors) {
+  if (colors === undefined) return null;
+  if (colors === null || colors === "") return null;
+  if (!Array.isArray(colors)) {
+    return "colors must be an array";
   }
-  if (returnable === true && windowDays !== undefined && windowDays < 1) {
-    return `${label}.windowDays must be at least 1 when returnable is true`;
+  for (const color of colors) {
+    const error = validateColor(color);
+    if (error) return error.replace(/^color\b/, "colors[]");
+  }
+  return null;
+}
+
+function validateSizeLabel(sizeLabel) {
+  if (sizeLabel === undefined || sizeLabel === null || sizeLabel === "") return null;
+  if (typeof sizeLabel !== "string") {
+    return "sizeLabel must be a string";
+  }
+  return null;
+}
+
+function validateDetails(details) {
+  if (details === undefined) return null;
+  if (!details || typeof details !== "object" || Array.isArray(details)) {
+    return "details must be an object";
+  }
+  return null;
+}
+
+function validateStockEntries(stock, { required }) {
+  if (stock === undefined) {
+    if (required) return "stock is required and must be a non-empty array";
+    return null;
+  }
+  if (!Array.isArray(stock) || stock.length === 0) {
+    return "stock must be a non-empty array";
+  }
+
+  const seenSizes = new Set();
+  const seenKeys = new Set();
+
+  for (const entry of stock) {
+    const stockKey = String(entry?.stockKey || "").trim().toUpperCase();
+    if (stockKey) {
+      if (seenKeys.has(stockKey)) return `Duplicate stock.stockKey: ${stockKey}`;
+      seenKeys.add(stockKey);
+    }
+
+    const sizeLabel = String(entry?.sizeLabel || "").trim();
+    if (sizeLabel) {
+      const token = sizeLabel.toLowerCase();
+      if (seenSizes.has(token)) return `Duplicate stock.sizeLabel: ${sizeLabel}`;
+      seenSizes.add(token);
+    }
+
+    if (entry?.quantity !== undefined && asNumber(entry.quantity) === null) {
+      return "stock.quantity must be a number";
+    }
+    if (entry?.reorderLevel !== undefined && asNumber(entry.reorderLevel) === null) {
+      return "stock.reorderLevel must be a number";
+    }
   }
 
   return null;
 }
 
-function validateCommon(body, requireColorName) {
+function validateCommon(body, { requireStock }) {
   if (body.price !== undefined && asNumber(body.price) === null) {
     return "price must be a number";
   }
 
-  const colorName = body?.merchandise?.color?.name;
-  if (requireColorName && (!colorName || !String(colorName).trim())) {
-    return "merchandise.color.name is required";
+  const discountError = validateDiscount(body.discount);
+  if (discountError) return discountError;
+
+  if (body.colors !== undefined && body.color !== undefined) {
+    return "Provide either colors or color, not both";
   }
 
-  const hex = body?.merchandise?.color?.hex;
-  if (hex && !HEX_COLOR_RE.test(String(hex).trim())) {
-    return "merchandise.color.hex must be a valid hex color (#RGB or #RRGGBB)";
-  }
+  const colorError = body.colors !== undefined
+    ? validateColors(body.colors)
+    : validateColor(body.color);
+  if (colorError) return colorError;
 
-  const blouseLen = body?.merchandise?.blouse?.lengthMeters;
-  if (blouseLen !== undefined) {
-    const n = asNumber(blouseLen);
-    if (n === null || n < 0) return "merchandise.blouse.lengthMeters must be a non-negative number";
-  }
+  const sizeError = validateSizeLabel(body.sizeLabel);
+  if (sizeError) return sizeError;
 
-  const saree = body?.merchandise?.saree;
-  if (saree) {
-    for (const key of ["lengthMeters", "widthMeters", "weightGrams"]) {
-      if (saree[key] !== undefined) {
-        const n = asNumber(saree[key]);
-        if (n === null || n < 0) return `merchandise.saree.${key} must be a non-negative number`;
-      }
-    }
-  }
+  const detailsError = validateDetails(body.details);
+  if (detailsError) return detailsError;
 
-  const policyError = validateReturnPolicy(body?.merchandise?.returnPolicyOverride, "merchandise.returnPolicyOverride");
-  if (policyError) return policyError;
+  const stockError = validateStockEntries(body.stock, { required: requireStock });
+  if (stockError) return stockError;
 
   return null;
 }
 
 export function validateCreate(req, res, next) {
-  const { sku, price } = req.body;
+  const { price } = req.body;
   const productId = req.params.id;
 
   if (!productId || !mongoose.isValidObjectId(productId)) {
     return res.status(400).json({ error: "productId param is required" });
   }
 
-  if (!sku || !String(sku).trim()) {
-    return res.status(400).json({ error: "sku is required" });
-  }
-
   if (price === undefined || Number.isNaN(Number(price))) {
     return res.status(400).json({ error: "price is required and must be a number" });
   }
 
-  const err = validateCommon(req.body, true);
+  if (!Array.isArray(req.body.images) || req.body.images.length === 0) {
+    return res.status(400).json({ error: "At least one variant image is required" });
+  }
+  if (req.body.images.some((image) => !image || !String(image.url || "").trim())) {
+    return res.status(400).json({ error: "Each variant image must include a valid url" });
+  }
+
+  const err = validateCommon(req.body, { requireStock: true });
   if (err) return res.status(400).json({ error: err });
 
   next();
@@ -95,7 +166,7 @@ export function validateUpdate(req, res, next) {
     return res.status(400).json({ error: "variantId must be a valid ObjectId" });
   }
 
-  const err = validateCommon(req.body, false);
+  const err = validateCommon(req.body, { requireStock: false });
   if (err) return res.status(400).json({ error: err });
 
   next();

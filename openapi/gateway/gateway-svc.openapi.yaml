@@ -7,7 +7,6 @@ info:
     - auth-via-gateway.openapi.yaml
     - catalog-via-gateway.openapi.yaml
     - product-via-gateway.openapi.yaml
-    - navigation-via-gateway.openapi.yaml
 servers:
   - url: http://localhost:4000
 paths:

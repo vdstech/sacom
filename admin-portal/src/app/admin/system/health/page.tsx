@@ -12,7 +12,6 @@ const endpoints = [
   { label: "Auth", path: "/api/system/health/auth", service: "auth" as const },
   { label: "Catalog", path: "/api/system/health/catalog", service: "auth" as const },
   { label: "Product", path: "/api/system/health/product", service: "auth" as const },
-  { label: "Navigation", path: "/api/system/health/navigation", service: "auth" as const },
 ];
 
 export default function HealthPage() {

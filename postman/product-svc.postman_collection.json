@@ -45,7 +45,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Silk Saree\",\n  \"slug\": \"silk-saree\",\n  \"description\": \"Long description\",\n  \"shortDescription\": \"Short description\",\n  \"primaryCategoryId\": \"{{category_id}}\",\n  \"categoryIds\": [\"{{category_id}}\"],\n  \"tags\": [\"saree\", \"silk\"],\n  \"currency\": \"INR\",\n  \"materialProfile\": {\n    \"fabric\": \"Kanchipuram silk\",\n    \"weave\": \"Handloom\",\n    \"workType\": \"Zari\",\n    \"pattern\": \"Traditional\",\n    \"borderStyle\": \"Temple\",\n    \"palluStyle\": \"Rich pallu\"\n  },\n  \"occasionTags\": [\"Wedding\", \"Festive\"],\n  \"blouseDefault\": {\n    \"included\": true,\n    \"type\": \"Unstitched\",\n    \"lengthMeters\": 0.8\n  },\n  \"careDefault\": {\n    \"washCare\": [\"Dry clean only\"],\n    \"ironCare\": \"Low heat reverse\",\n    \"bleach\": \"Do not bleach\",\n    \"dryClean\": \"Recommended\",\n    \"dryInstructions\": \"Dry in shade\"\n  },\n  \"returnPolicyDefault\": {\n    \"returnable\": true,\n    \"windowDays\": 7,\n    \"type\": \"exchange_or_refund\",\n    \"notes\": \"Unused products only\"\n  },\n  \"isActive\": true\n}"
+              "raw": "{\n  \"title\": \"Silk Saree\",\n  \"slug\": \"silk-saree\",\n  \"description\": \"Long description\",\n  \"shortDescription\": \"Short description\",\n  \"categoryId\": \"{{category_id}}\",\n  \"tags\": [\"saree\", \"silk\"],\n  \"currency\": \"INR\",\n  \"shipping\": {\n    \"text\": \"Ships in 1-2 business days. Delivery in 4-6 days. Free shipping above Rs 999.\"\n  },\n  \"care\": {\n    \"text\": \"Dry clean only\"\n  },\n  \"returnPolicy\": {\n    \"text\": \"Returns and exchanges accepted within 7 days for unused items.\",\n    \"returnable\": true,\n    \"windowDays\": 7\n  },\n  \"details\": {\n    \"fabric\": \"Kanchipuram silk\",\n    \"work_type\": \"Zari\"\n  },\n  \"isActive\": true\n}"
             },
             "url": "{{base_url}}/api/admin/products"
           }
@@ -68,7 +68,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Silk Saree Updated\",\n  \"slug\": \"silk-saree-updated\",\n  \"isFeatured\": true,\n  \"materialProfile\": {\n    \"fabric\": \"Soft silk\",\n    \"workType\": \"Thread\"\n  }\n}"
+              "raw": "{\n  \"title\": \"Silk Saree Updated\",\n  \"slug\": \"silk-saree-updated\",\n  \"shipping\": {\n    \"text\": \"Ships in 2-3 business days\"\n  },\n  \"care\": {\n    \"text\": \"Dry clean only\"\n  },\n  \"returnPolicy\": {\n    \"text\": \"Returns and exchanges accepted within 10 days for unused items.\",\n    \"returnable\": true,\n    \"windowDays\": 10\n  },\n  \"isFeatured\": true,\n  \"details\": {\n    \"fabric\": \"Soft silk\",\n    \"work_type\": \"Thread\"\n  }\n}"
             },
             "url": "{{base_url}}/api/admin/products/{{product_id}}"
           }
@@ -116,7 +116,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sku\": \"SR-RED-001\",\n  \"price\": 1999,\n  \"mrp\": 2499,\n  \"isActive\": true,\n  \"merchandise\": {\n    \"color\": { \"name\": \"Red\", \"family\": \"Warm\", \"hex\": \"#C62828\" },\n    \"size\": { \"label\": \"Free\", \"system\": \"IN\", \"sortKey\": 0 },\n    \"blouse\": { \"included\": true, \"type\": \"Unstitched\", \"lengthMeters\": 0.8 },\n    \"saree\": { \"lengthMeters\": 5.5, \"widthMeters\": 1.2, \"weightGrams\": 700, \"fallPicoDone\": false, \"stitchReady\": false },\n    \"style\": { \"occasionTags\": [\"Wedding\"], \"workType\": \"Zari\", \"pattern\": \"Traditional\" }\n  },\n  \"inventory\": {\n    \"trackInventory\": true,\n    \"availableQty\": 10,\n    \"reservedQty\": 0,\n    \"allowBackorder\": false,\n    \"reorderLevel\": 2,\n    \"display\": { \"colorName\": \"Red\", \"sizeLabel\": \"Free\", \"materialLabel\": \"Silk\" },\n    \"care\": { \"washCare\": [\"Dry clean only\"], \"ironCare\": \"Low\", \"bleach\": \"No\", \"dryClean\": \"Yes\", \"dryInstructions\": \"Shade\" },\n    \"returnPolicy\": { \"returnable\": true, \"windowDays\": 7, \"type\": \"exchange_or_refund\", \"notes\": \"Unused\" }\n  }\n}"
+              "raw": "{\n  \"price\": 1999,\n  \"discount\": { \"type\": \"percent\", \"value\": 10, \"label\": \"Festive Offer\" },\n  \"colors\": [\n    { \"name\": \"Red\", \"hex\": \"#C62828\" }\n  ],\n  \"details\": {\n    \"sleeve_type\": \"elbow\",\n    \"padded\": true\n  },\n  \"stock\": [\n    { \"sizeLabel\": \"S\", \"quantity\": 10, \"reorderLevel\": 2 },\n    { \"sizeLabel\": \"M\", \"quantity\": 0, \"reorderLevel\": 2 }\n  ],\n  \"isActive\": true\n}"
             },
             "url": "{{base_url}}/api/admin/products/{{product_id}}/variants"
           }
@@ -129,7 +129,7 @@
               { "key": "Authorization", "value": "Bearer {{access_token}}" },
               { "key": "Content-Type", "value": "application/json" }
             ],
-            "body": { "mode": "raw", "raw": "{\n  \"price\": 2099,\n  \"merchandise\": {\n    \"color\": { \"name\": \"Maroon\", \"hex\": \"#800000\" },\n    \"size\": { \"label\": \"Free\" }\n  }\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"price\": 2099,\n  \"colors\": [\n    { \"name\": \"Maroon\", \"hex\": \"#800000\" }\n  ],\n  \"stock\": [\n    { \"sizeLabel\": \"S\", \"quantity\": 4, \"reorderLevel\": 1 }\n  ]\n}" },
             "url": "{{base_url}}/api/admin/products/{{product_id}}/variants/{{variant_id}}"
           }
         },

@@ -8,6 +8,31 @@ paths:
   /products:
     get:
       summary: Storefront product list
+      parameters:
+        - in: query
+          name: categoryId
+          schema: { type: string }
+        - in: query
+          name: facet.material.fabric
+          schema: { type: string }
+        - in: query
+          name: facet.material.weave
+          schema: { type: string }
+        - in: query
+          name: minPrice
+          schema: { type: number }
+        - in: query
+          name: maxPrice
+          schema: { type: number }
+        - in: query
+          name: discountType
+          schema: { type: string, enum: [none, percent, flat] }
+        - in: query
+          name: discountMin
+          schema: { type: number }
+        - in: query
+          name: discountMax
+          schema: { type: number }
       responses:
         '200':
           description: Product list
@@ -17,6 +42,20 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/ProductListItem'
+  /products/facets:
+    get:
+      summary: Storefront facet metadata
+      parameters:
+        - in: query
+          name: categoryId
+          schema: { type: string }
+      responses:
+        '200':
+          description: Facet list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductFacetResponse'
   /products/{slug}:
     parameters:
       - in: path
@@ -53,6 +92,31 @@ paths:
     get:
       summary: List admin products
       security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: categoryId
+          schema: { type: string }
+        - in: query
+          name: facet.material.fabric
+          schema: { type: string }
+        - in: query
+          name: facet.material.weave
+          schema: { type: string }
+        - in: query
+          name: minPrice
+          schema: { type: number }
+        - in: query
+          name: maxPrice
+          schema: { type: number }
+        - in: query
+          name: discountType
+          schema: { type: string, enum: [none, percent, flat] }
+        - in: query
+          name: discountMin
+          schema: { type: number }
+        - in: query
+          name: discountMax
+          schema: { type: number }
       responses:
         '200': { description: Product list }
     post:
@@ -66,6 +130,21 @@ paths:
               $ref: '#/components/schemas/ProductWriteRequest'
       responses:
         '201': { description: Created }
+  /api/admin/products/facets:
+    get:
+      summary: Admin facet metadata
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: categoryId
+          schema: { type: string }
+      responses:
+        '200':
+          description: Facet list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductFacetResponse'
   /api/admin/products/{id}:
     parameters:
       - in: path
@@ -191,14 +270,37 @@ components:
               name: { type: string }
               hex: { type: string }
         hasMultipleColors: { type: boolean }
+    Discount:
+      type: object
+      properties:
+        type: { type: string, enum: [none, percent, flat] }
+        value: { type: number }
+        label: { type: string }
     ProductWriteRequest:
       type: object
       properties:
         title: { type: string }
-        primaryCategoryId: { type: string }
-        materialProfile: { type: object }
-        careDefault: { type: object }
-        returnPolicyDefault: { type: object }
+        slug: { type: string }
+        categoryId: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        currency: { type: string }
+        shipping:
+          type: object
+          properties:
+            text: { type: string }
+        care:
+          type: object
+          properties:
+            text: { type: string }
+        returnPolicy:
+          type: object
+          properties:
+            text: { type: string }
+            returnable: { type: boolean }
+            windowDays: { type: number }
+        details: { type: object }
     ProductListItem:
       type: object
       properties:
@@ -210,6 +312,25 @@ components:
         availability: { type: boolean }
         colorSummary:
           $ref: '#/components/schemas/ColorSummary'
+        otherVariantColors:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              hex: { type: string }
+        defaultVariant:
+          type: object
+          properties:
+            variantId: { type: string }
+            price: { type: number }
+            effectivePrice: { type: number }
+            imageUrl: { type: string }
+            colorName: { type: string }
+            colorHex: { type: string }
+            sizeLabel: { type: string }
+            discount:
+              $ref: '#/components/schemas/Discount'
     ProductDetail:
       allOf:
         - $ref: '#/components/schemas/ProductListItem'
@@ -218,12 +339,53 @@ components:
             variants:
               type: array
               items: { type: object }
+    ProductFacetResponse:
+      type: object
+      properties:
+        categoryId: { type: string }
+        categorySlug: { type: string }
+        priceRange:
+          type: object
+          nullable: true
+          properties:
+            min: { type: number }
+            max: { type: number }
+        facets:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              label: { type: string }
+              type: { type: string, enum: [enum, boolean, text] }
+              scope: { type: string, enum: [product, variant], default: variant }
+              multiSelect: { type: boolean }
+              showOther: { type: boolean }
+              options:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    value: { type: string }
+                    label: { type: string }
+                    count: { type: number }
+              other:
+                type: object
+                nullable: true
+                properties:
+                  value: { type: string }
+                  label: { type: string }
+                  count: { type: number }
     VariantWriteRequest:
       type: object
       properties:
-        sku: { type: string }
         price: { type: number }
+        discount:
+          $ref: '#/components/schemas/Discount'
         merchandise: { type: object }
+        images:
+          type: array
+          items: { type: object }
         inventory: { type: object }
     InventoryPatchRequest:
       type: object

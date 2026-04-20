@@ -9,6 +9,7 @@ const router = Router();
 // READ
 router.get("/", ctrl.listCategories);
 router.get("/tree", ctrl.getCategoryTree);
+router.get("/:id/filter-config", ctrl.getCategoryFilterConfig);
 router.get("/:id", ctrl.getCategoryById);
 
 // WRITE (admin)
