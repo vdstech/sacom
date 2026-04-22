@@ -6,6 +6,11 @@ import { AccountShell } from "@/components/AccountShell";
 import { useAccount } from "@/components/AccountProvider";
 import { fetchCustomerOrder, fetchCustomerOrders, type CustomerOrder } from "@/lib/accountApi";
 import { formatMoney } from "@/lib/pricing";
+import { STOREFRONT_STRINGS } from "@/lib/strings";
+
+function getOrderDisplayTotal(order: CustomerOrder) {
+  return Number(order.grandTotal ?? order.total ?? 0);
+}
 
 export default function OrdersPage() {
   const router = useRouter();
@@ -29,7 +34,7 @@ export default function OrdersPage() {
         setOrders(payload.orders || []);
         setSelectedOrder(payload.orders?.[0] || null);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load orders");
+        if (!cancelled) setError(err instanceof Error ? err.message : STOREFRONT_STRINGS.account.orders.fallbackError);
       }
     }
     load();
@@ -45,12 +50,12 @@ export default function OrdersPage() {
   };
 
   return (
-    <AccountShell title="Orders" subtitle="Track your recent purchases and view line-item details.">
+    <AccountShell title={STOREFRONT_STRINGS.account.orders.title} subtitle={STOREFRONT_STRINGS.account.orders.subtitle}>
       {error ? <div className="status-banner status-banner--error">{error}</div> : null}
       {!orders.length ? (
         <div className="coming-soon">
-          <h2 className="coming-soon__title">No orders yet.</h2>
-          <p className="coming-soon__copy">Your placed orders will appear here once customer checkout starts creating order history.</p>
+          <h2 className="coming-soon__title">{STOREFRONT_STRINGS.account.orders.emptyTitle}</h2>
+          <p className="coming-soon__copy">{STOREFRONT_STRINGS.account.orders.emptyCopy}</p>
         </div>
       ) : (
         <div className="account-orders">
@@ -62,26 +67,26 @@ export default function OrdersPage() {
                 className={`account-orders__item ${selectedOrder?.id === order.id ? "is-active" : ""}`}
                 onClick={() => loadOrder(order.id)}
               >
-                <strong>Order #{order.id.slice(-6).toUpperCase()}</strong>
+                <strong>{STOREFRONT_STRINGS.account.orders.orderPrefix}{order.id.slice(-6).toUpperCase()}</strong>
                 <span>{new Date(order.placedAt || "").toLocaleDateString()}</span>
                 <span>{order.status}</span>
-                <span>{formatMoney(order.total)}</span>
+                <span>{formatMoney(getOrderDisplayTotal(order))}</span>
               </button>
             ))}
           </div>
           <div className="account-orders__detail">
             {selectedOrder ? (
               <>
-                <h3>Order #{selectedOrder.id.slice(-6).toUpperCase()}</h3>
-                <p className="section-copy">Status: {selectedOrder.status}</p>
+                <h3>{STOREFRONT_STRINGS.account.orders.orderPrefix}{selectedOrder.id.slice(-6).toUpperCase()}</h3>
+                <p className="section-copy">{STOREFRONT_STRINGS.account.orders.status}: {selectedOrder.status}</p>
                 <div className="account-orders__lines">
                   {selectedOrder.items.map((item, index) => (
                     <div key={`${item.slug || item.title}-${index}`} className="account-orders__line">
                       <div>
                         <strong>{item.title}</strong>
-                        <div className="section-copy">Qty {item.quantity}</div>
+                        <div className="section-copy">{STOREFRONT_STRINGS.account.orders.qty} {item.quantity}</div>
                       </div>
-                      <div>{formatMoney(item.lineTotal)}</div>
+                      <div>{formatMoney(Number(item.lineGrandTotal ?? item.lineTotal ?? 0))}</div>
                     </div>
                   ))}
                 </div>

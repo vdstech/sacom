@@ -1,6 +1,7 @@
 import type { ProductDetail, StoreDiscount } from "@/lib/storeApi";
+import { STOREFRONT_STORAGE_KEYS } from "@/lib/constants";
 
-const STORAGE_KEY = "siri_recently_viewed";
+const STORAGE_KEY = STOREFRONT_STORAGE_KEYS.recentlyViewed;
 const MAX_RECENT_ITEMS = 8;
 
 export type RecentlyViewedEntry = {

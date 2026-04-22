@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAccount } from "@/components/AccountProvider";
+import { STOREFRONT_STRINGS } from "@/lib/strings";
 
 export default function AccountAuthPage() {
   const router = useRouter();
@@ -37,7 +38,7 @@ export default function AccountAuthPage() {
       }
       router.replace(returnTo);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to continue");
+      setError(err instanceof Error ? err.message : STOREFRONT_STRINGS.account.auth.fallbackError);
     } finally {
       setSubmitting(false);
     }
@@ -47,18 +48,16 @@ export default function AccountAuthPage() {
     <section className="section">
       <div className="account-auth">
         <div className="account-auth__card">
-          <div className="section-kicker">Customer Account</div>
-          <h1 className="section-title">{mode === "login" ? "Login to Siri" : "Create your Siri account"}</h1>
-          <p className="section-copy">
-            Save addresses, manage wishlist items, and track customer orders from one account.
-          </p>
+          <div className="section-kicker">{STOREFRONT_STRINGS.account.auth.kicker}</div>
+          <h1 className="section-title">{mode === "login" ? STOREFRONT_STRINGS.account.auth.loginTitle : STOREFRONT_STRINGS.account.auth.signupTitle}</h1>
+          <p className="section-copy">{STOREFRONT_STRINGS.account.auth.subtitle}</p>
 
           <div className="account-auth__tabs">
             <button type="button" className={`account-auth__tab ${mode === "login" ? "is-active" : ""}`} onClick={() => setMode("login")}>
-              Login
+              {STOREFRONT_STRINGS.account.auth.tabs.login}
             </button>
             <button type="button" className={`account-auth__tab ${mode === "signup" ? "is-active" : ""}`} onClick={() => setMode("signup")}>
-              Signup
+              {STOREFRONT_STRINGS.account.auth.tabs.signup}
             </button>
           </div>
 
@@ -66,30 +65,30 @@ export default function AccountAuthPage() {
             {mode === "signup" ? (
               <>
                 <label className="account-auth__field">
-                  <span>Name</span>
+                  <span>{STOREFRONT_STRINGS.account.auth.fields.name}</span>
                   <input value={name} onChange={(event) => setName(event.target.value)} required />
                 </label>
                 <label className="account-auth__field">
-                  <span>Phone</span>
+                  <span>{STOREFRONT_STRINGS.account.auth.fields.phone}</span>
                   <input value={phone} onChange={(event) => setPhone(event.target.value)} />
                 </label>
               </>
             ) : null}
 
             <label className="account-auth__field">
-              <span>Email</span>
+              <span>{STOREFRONT_STRINGS.account.auth.fields.email}</span>
               <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
             </label>
 
             <label className="account-auth__field">
-              <span>Password</span>
+              <span>{STOREFRONT_STRINGS.account.auth.fields.password}</span>
               <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
             </label>
 
             {error ? <div className="status-banner status-banner--error">{error}</div> : null}
 
             <button type="submit" className="primary-button account-auth__submit" disabled={submitting}>
-              {submitting ? "Please wait..." : mode === "login" ? "Login" : "Create Account"}
+              {submitting ? STOREFRONT_STRINGS.account.auth.submit.busy : mode === "login" ? STOREFRONT_STRINGS.account.auth.submit.login : STOREFRONT_STRINGS.account.auth.submit.signup}
             </button>
           </form>
         </div>

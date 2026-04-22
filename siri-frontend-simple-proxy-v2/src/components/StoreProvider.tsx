@@ -1,5 +1,8 @@
 "use client";
 
+// StoreProvider keeps guest-cart state resilient at the layout level so cart
+// fetch failures degrade into an unavailable cart state instead of breaking
+// storefront navigation or page rendering.
 import {
   createContext,
   useContext,
@@ -9,8 +12,10 @@ import {
   type ReactNode,
 } from "react";
 import { CartResponse, fetchStore } from "@/lib/storeApi";
+import { STOREFRONT_STORAGE_KEYS } from "@/lib/constants";
+import { STOREFRONT_STRINGS } from "@/lib/strings";
 
-const CART_TOKEN_STORAGE_KEY = "siri_guest_cart_token";
+const CART_TOKEN_STORAGE_KEY = STOREFRONT_STORAGE_KEYS.guestCartToken;
 
 type CartContextValue = {
   cart: CartResponse | null;
@@ -63,7 +68,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setError(null);
     } catch (err) {
       setCart(null);
-      setError(err instanceof Error ? err.message : "Cart is temporarily unavailable");
+      setError(err instanceof Error ? err.message : STOREFRONT_STRINGS.navigation.cart.unavailable);
     } finally {
       setLoading(false);
     }
@@ -87,7 +92,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setError(null);
       setOpen(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Cart is temporarily unavailable");
+      setError(err instanceof Error ? err.message : STOREFRONT_STRINGS.navigation.cart.unavailable);
     }
   };
 
@@ -104,7 +109,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setCart(payload);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Cart is temporarily unavailable");
+      setError(err instanceof Error ? err.message : STOREFRONT_STRINGS.navigation.cart.unavailable);
     }
   };
 
@@ -118,7 +123,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setCart(payload);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Cart is temporarily unavailable");
+      setError(err instanceof Error ? err.message : STOREFRONT_STRINGS.navigation.cart.unavailable);
     }
   };
 

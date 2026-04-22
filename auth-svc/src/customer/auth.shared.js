@@ -1,3 +1,5 @@
+// Customer auth uses a separate cookie, refresh-token store, and JWT signing path
+// from the admin portal auth flow so storefront customers never inherit admin roles.
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 

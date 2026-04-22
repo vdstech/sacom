@@ -1,6 +1,7 @@
 import { StoreRequestError } from "@/lib/storeApi";
+import { STOREFRONT_STORAGE_KEYS } from "@/lib/constants";
 
-const CUSTOMER_ACCESS_TOKEN_STORAGE_KEY = "siri_customer_access_token";
+const CUSTOMER_ACCESS_TOKEN_STORAGE_KEY = STOREFRONT_STORAGE_KEYS.customerAccessToken;
 
 export type CustomerProfile = {
   id: string;
@@ -41,21 +42,61 @@ export type CustomerWishlistItem = {
 
 export type CustomerOrderItem = {
   productId?: string;
+  variantId?: string;
+  stockKey?: string;
   slug?: string;
   title: string;
   imageUrl?: string;
   quantity: number;
+  currency?: string;
+  listUnitPrice?: number;
+  catalogDiscountType?: string;
+  catalogDiscountValue?: number;
+  catalogDiscountLabel?: string;
+  catalogDiscountAmount?: number;
+  promoDiscountType?: string;
+  promoDiscountValue?: number;
+  promoDiscountLabel?: string;
+  promoDiscountAmount?: number;
+  finalUnitPrice?: number;
+  lineSubtotal?: number;
+  lineTaxTotal?: number;
+  lineShippingTotal?: number;
+  lineDiscountTotal?: number;
+  lineGrandTotal?: number;
   unitPrice: number;
   lineTotal: number;
+};
+
+export type CustomerOrderAddressSnapshot = {
+  fullName?: string;
+  phone?: string;
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
 };
 
 export type CustomerOrder = {
   id: string;
   placedAt?: string;
   status: string;
+  paymentStatus?: string;
+  fulfillmentStatus?: string;
   itemCount: number;
+  subtotal?: number;
+  discountTotal?: number;
+  shippingTotal?: number;
+  taxTotal?: number;
+  grandTotal?: number;
   total: number;
   currency?: string;
+  pricingVersion?: number;
+  couponCode?: string;
+  paymentReference?: string;
+  addressSnapshot?: CustomerOrderAddressSnapshot | null;
   items: CustomerOrderItem[];
 };
 

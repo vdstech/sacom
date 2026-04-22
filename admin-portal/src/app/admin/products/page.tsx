@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { hasAnyPermission } from "@/lib/permissions";
+import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
 
 type ProductDoc = {
   _id: string;
@@ -108,28 +109,28 @@ export default function ProductsPage() {
   return (
     <ProtectedPage anyOf={["product:read", "product:write", "product:delete", "product:publish"]}>
       <section className="card row" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <h1 style={{ marginRight: "auto" }}>Products</h1>
+        <h1 style={{ marginRight: "auto" }}>{ADMIN_UI_STRINGS.products.title}</h1>
         <label style={{ minWidth: 220 }}>
-          Category
+          {ADMIN_UI_STRINGS.products.categoryLabel}
           <select
             value={selectedCategoryId}
             onChange={(e) => setSelectedCategoryId(e.target.value)}
             style={{ width: "100%" }}
           >
-            <option value="">All categories</option>
+            <option value="">{ADMIN_UI_STRINGS.products.allCategories}</option>
             {categories.map((category) => (
               <option key={category._id} value={category._id}>{category.name}</option>
             ))}
           </select>
         </label>
-        <Link href="/admin/products/new"><button>Create Product</button></Link>
-        <button className="secondary" onClick={() => load()}>Refresh</button>
+        <Link href="/admin/products/new"><button>{ADMIN_UI_STRINGS.products.createProduct}</button></Link>
+        <button className="secondary" onClick={() => load()}>{ADMIN_UI_STRINGS.common.refresh}</button>
       </section>
 
       {error ? <div className="error">{error}</div> : null}
-      {loading ? <div>Loading products...</div> : null}
+      {loading ? <div>{ADMIN_UI_STRINGS.common.loadingProducts}</div> : null}
       <DataTable
-        headers={["Variant", "Title", "Slug", "Default Variant", "Colors", "Care", "Discount", "Featured", "Status", "Actions"]}
+        headers={[...ADMIN_UI_STRINGS.products.headers]}
         rows={products.map((product) => [
           product.defaultVariant?.imageUrl ? (
             <img
@@ -152,14 +153,14 @@ export default function ProductsPage() {
                 opacity: 0.7,
               }}
             >
-              no image
+              {ADMIN_UI_STRINGS.common.noImage}
             </div>
           ),
           product.title,
           product.slug,
           product.defaultVariant
             ? `${(product.defaultVariant.colors || []).map((entry) => entry?.name).filter(Boolean).join(", ") || "-"}${product.defaultVariant.sizeLabel ? ` / ${product.defaultVariant.sizeLabel}` : ""} | ₹${Number(product.defaultVariant.effectivePrice ?? (product.defaultVariant.price || 0))}`
-            : "-",
+            : ADMIN_UI_STRINGS.products.defaultVariantMissing,
           <div key={`colors-${product._id}`} className="row" style={{ gap: 6 }}>
             {(product.colorSummary?.swatches || []).slice(0, 5).map((swatch) => (
               <span
@@ -175,15 +176,15 @@ export default function ProductsPage() {
                 }}
               />
             ))}
-            {!product.colorSummary?.swatches?.length ? "-" : null}
+            {!product.colorSummary?.swatches?.length ? ADMIN_UI_STRINGS.products.defaultVariantMissing : null}
           </div>,
-          product.care?.text || "-",
+          product.care?.text || ADMIN_UI_STRINGS.products.defaultVariantMissing,
           renderDiscount(product),
-          product.isFeatured ? "Yes" : "No",
+          product.isFeatured ? ADMIN_UI_STRINGS.common.yes : ADMIN_UI_STRINGS.common.no,
           <StatusBadge key={`status-${product._id}`} active={!!product.isActive} />,
           <div key={product._id} className="row">
-            <Link href={`/admin/products/${product._id}`}><button className="secondary">Edit</button></Link>
-            <Link href={`/admin/products/${product._id}/variants`}><button className="secondary">Variants</button></Link>
+            <Link href={`/admin/products/${product._id}`}><button className="secondary">{ADMIN_UI_STRINGS.common.edit}</button></Link>
+            <Link href={`/admin/products/${product._id}/variants`}><button className="secondary">{ADMIN_UI_STRINGS.products.variants}</button></Link>
             <button
               className="secondary"
               onClick={async () => {
@@ -197,13 +198,13 @@ export default function ProductsPage() {
                 load();
               }}
             >
-              {product.isActive ? "Unpublish" : "Publish"}
+              {product.isActive ? ADMIN_UI_STRINGS.products.unpublish : ADMIN_UI_STRINGS.products.publish}
             </button>
             {canDelete ? (
               <button
                 className="danger"
                 onClick={async () => {
-                  const ok = window.confirm(`Delete product "${product.title}"? This will permanently delete product, variants and stock.`);
+                  const ok = window.confirm(ADMIN_UI_STRINGS.products.deleteConfirm(product.title));
                   if (!ok) return;
                   try {
                     await apiRequest(`/api/admin/products/${product._id}`, {

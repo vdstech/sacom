@@ -1,3 +1,5 @@
+import { DEFAULT_GATEWAY_INTERNAL_URL } from "@/lib/constants";
+
 export type CarePolicy = {
   text?: string;
 };
@@ -155,7 +157,7 @@ function resolveStoreBaseUrl() {
     .replace(/\/$/, "");
   if (baseUrl) return baseUrl;
 
-  return "https://localhost:4000";
+  return DEFAULT_GATEWAY_INTERNAL_URL;
 }
 
 export async function fetchStore<T>(path: string, init?: RequestInit): Promise<T> {

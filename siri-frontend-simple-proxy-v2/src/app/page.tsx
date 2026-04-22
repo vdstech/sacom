@@ -11,6 +11,7 @@ import {
   isLiveCategorySlug,
   toTechnicalBannerMessage,
 } from "@/lib/storefront";
+import { STOREFRONT_STRINGS } from "@/lib/strings";
 
 type CategorySpotlight = {
   label: string;
@@ -21,7 +22,7 @@ type CategorySpotlight = {
 
 function getLiveInventoryTitle(categories: CategorySpotlight[], liveHref = "") {
   const liveCategory = categories.find((item) => item.href === liveHref);
-  return liveCategory?.label || "Selected Collection";
+  return liveCategory?.label || STOREFRONT_STRINGS.home.selectedCollection;
 }
 
 export default function Page() {
@@ -102,52 +103,50 @@ export default function Page() {
   const topHighlights = useMemo(() => categories.slice(0, 8), [categories]);
   const liveCategory = categories.find((item) => item.categorySlug === PRIMARY_MERCH_CATEGORY_SLUG) || null;
   const liveHref = liveCategory?.href || "#categories";
-  const primaryCtaLabel = liveCategory ? `Shop ${liveCategory.label}` : "Browse Categories";
+  const primaryCtaLabel = liveCategory ? `Shop ${liveCategory.label}` : STOREFRONT_STRINGS.home.browseCategories;
 
   return (
     <div>
       <section className="hero">
         <div className="hero__content">
-          <div className="hero__eyebrow">Category First Luxury Storefront</div>
-          <h1 className="hero__title">Celebrate every drape with a commerce experience built like Siri Collections.</h1>
-          <p className="hero__copy">
-            Browse blouse stories first, discover upcoming categories as they launch, and keep your cart ready for a smoother checkout the moment customer login arrives.
-          </p>
+          <div className="hero__eyebrow">{STOREFRONT_STRINGS.home.heroEyebrow}</div>
+          <h1 className="hero__title">{STOREFRONT_STRINGS.home.heroTitle}</h1>
+          <p className="hero__copy">{STOREFRONT_STRINGS.home.heroCopy}</p>
           <div className="hero__actions">
             <Link href={liveHref} className="primary-button">
               {primaryCtaLabel}
             </Link>
             <Link href="#categories" className="secondary-button">
-              Explore Categories
+              {STOREFRONT_STRINGS.home.exploreCategories}
             </Link>
           </div>
         </div>
         <div className="hero__visual" />
       </section>
 
-      {loading ? <div className="section-copy" style={{ marginTop: 24 }}>Loading storefront…</div> : null}
+      {loading ? <div className="section-copy" style={{ marginTop: 24 }}>{STOREFRONT_STRINGS.home.loading}</div> : null}
       {technicalError ? <div className="status-banner status-banner--error" style={{ marginTop: 24 }}>{technicalError}</div> : null}
 
       <section className="section" id="categories">
         <div className="section-header">
           <div>
-            <div className="section-kicker">Browse by Category</div>
-            <h2 className="section-title">All Collections Stay Visible</h2>
+            <div className="section-kicker">{STOREFRONT_STRINGS.home.browseByCategory}</div>
+            <h2 className="section-title">{STOREFRONT_STRINGS.home.allCollectionsStayVisible}</h2>
           </div>
-          <p className="section-copy">Categories come from the active category tree. Blouse and Mangalsutra are live now; the rest stay published as coming-soon destinations.</p>
+          <p className="section-copy">{STOREFRONT_STRINGS.home.categoryTreeCopy}</p>
         </div>
         <div className="category-grid">
           {topHighlights.map((category) => (
             <Link key={`${category.href}-${category.label}`} href={category.href} className="category-card">
               <div className="category-card__meta">
-                <span className="section-kicker">{category.categorySlug || "collection"}</span>
-                {!category.isLive ? <span className="category-card__badge">Coming Soon</span> : null}
+                <span className="section-kicker">{category.categorySlug || STOREFRONT_STRINGS.brand.fallbackCategorySlug}</span>
+                {!category.isLive ? <span className="category-card__badge">{STOREFRONT_STRINGS.category.comingSoon}</span> : null}
               </div>
               <div className="category-card__title">{category.label}</div>
               <p className="section-copy">
                 {category.isLive
-                  ? `Browse the live ${category.label.toLowerCase()} catalog with full listing and product detail support.`
-                  : "This category remains visible in the menu and opens a branded coming-soon page until merchandise is launched."}
+                  ? STOREFRONT_STRINGS.home.liveCategoryCopy(category.label)
+                  : STOREFRONT_STRINGS.home.upcomingCategoryCopy}
               </p>
             </Link>
           ))}
@@ -156,15 +155,15 @@ export default function Page() {
 
       <section className="section">
         <div className="section-header">
-          <div>
-            <div className="section-kicker">Live Inventory</div>
+            <div>
+            <div className="section-kicker">{STOREFRONT_STRINGS.home.liveInventory}</div>
             <h2 className="section-title">{getLiveInventoryTitle(categories, liveCategory?.href || "")}</h2>
           </div>
-          <Link href={liveHref} className="secondary-button">{liveCategory ? "View All" : "Browse Categories"}</Link>
+          <Link href={liveHref} className="secondary-button">{liveCategory ? STOREFRONT_STRINGS.home.viewAll : STOREFRONT_STRINGS.home.browseCategories}</Link>
         </div>
         {liveRailUnavailable ? (
           <div className="status-banner status-banner--error">
-            The live blouse rail is temporarily unavailable while the storefront backend recovers.
+            {STOREFRONT_STRINGS.home.liveRailUnavailable}
           </div>
         ) : liveProducts.length ? (
           <div className="card-grid">
@@ -172,11 +171,9 @@ export default function Page() {
           </div>
         ) : (
           <div className="coming-soon">
-            <div className="status-soon">Coming Soon</div>
-            <h3 className="coming-soon__title">The live blouse rail will appear here when merchandise is available.</h3>
-            <p className="coming-soon__copy">
-              If the primary live category has no products available yet, the storefront stays intact and waits for the catalog to go live.
-            </p>
+            <div className="status-soon">{STOREFRONT_STRINGS.category.comingSoon}</div>
+            <h3 className="coming-soon__title">{STOREFRONT_STRINGS.home.liveRailComingSoonTitle}</h3>
+            <p className="coming-soon__copy">{STOREFRONT_STRINGS.home.liveRailComingSoonCopy}</p>
           </div>
         )}
       </section>
@@ -185,8 +182,8 @@ export default function Page() {
         <section className="section">
           <div className="section-header">
             <div>
-              <div className="section-kicker">Featured Picks</div>
-              <h2 className="section-title">You May Also Like</h2>
+              <div className="section-kicker">{STOREFRONT_STRINGS.home.featuredPicks}</div>
+              <h2 className="section-title">{STOREFRONT_STRINGS.home.youMayAlsoLike}</h2>
             </div>
           </div>
           <div className="card-grid">

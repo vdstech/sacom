@@ -3,12 +3,13 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  const [email, setEmail] = useState("superadmin@sa.com");
-  const [password, setPassword] = useState("SuperAdmin@123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -20,7 +21,7 @@ export default function LoginPage() {
       await login(email, password);
       router.push("/profile");
     } catch (err) {
-      setError((err as Error).message || "Login failed");
+      setError((err as Error).message || ADMIN_UI_STRINGS.login.failed);
     } finally {
       setLoading(false);
     }
@@ -29,31 +30,31 @@ export default function LoginPage() {
   return (
     <div style={{ maxWidth: 720, margin: "60px auto", display: "grid", gap: 16 }}>
       <section className="card">
-        <h1>Admin Login</h1>
+        <h1>{ADMIN_UI_STRINGS.login.title}</h1>
         <form onSubmit={onSubmit} className="row" style={{ flexDirection: "column", alignItems: "stretch" }}>
           <label>
-            Email
+            {ADMIN_UI_STRINGS.login.fields.email}
             <input value={email} onChange={(e) => setEmail(e.target.value)} />
           </label>
           <label>
-            Password
+            {ADMIN_UI_STRINGS.login.fields.password}
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </label>
           {error ? <div className="error">{error}</div> : null}
-          <button disabled={loading}>{loading ? "Signing in..." : "Sign In"}</button>
+          <button disabled={loading}>{loading ? ADMIN_UI_STRINGS.login.signingIn : ADMIN_UI_STRINGS.login.signIn}</button>
         </form>
       </section>
 
       <section className="card">
-        <h2 style={{ marginTop: 0 }}>Local URLs</h2>
+        <h2 style={{ marginTop: 0 }}>{ADMIN_UI_STRINGS.login.localUrlsTitle}</h2>
         <p style={{ marginTop: 0 }}>
-          The admin menu is permission-based, so it becomes available after a successful sign-in.
+          {ADMIN_UI_STRINGS.login.localUrlsCopy}
         </p>
         <ul style={{ marginBottom: 0 }}>
-          <li>Admin portal: <a href="https://localhost:3000">https://localhost:3000</a></li>
-          <li>Gateway API: <a href="https://localhost:4000">https://localhost:4000</a></li>
-          <li>Gateway health: <a href="https://localhost:4000/health">https://localhost:4000/health</a></li>
-          <li>Customer storefront: <a href="http://localhost:3001">http://localhost:3001</a></li>
+          <li>{ADMIN_UI_STRINGS.localUrls.adminPortal}: <a href="https://localhost:3000">https://localhost:3000</a></li>
+          <li>{ADMIN_UI_STRINGS.localUrls.gatewayApi}: <a href="https://localhost:4000">https://localhost:4000</a></li>
+          <li>{ADMIN_UI_STRINGS.localUrls.gatewayHealth}: <a href="https://localhost:4000/health">https://localhost:4000/health</a></li>
+          <li>{ADMIN_UI_STRINGS.localUrls.storefront}: <a href="http://localhost:3001">http://localhost:3001</a></li>
         </ul>
       </section>
     </div>

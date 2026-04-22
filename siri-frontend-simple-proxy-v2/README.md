@@ -21,7 +21,7 @@ Browser URL:
 ## Current Storefront Behavior
 - Header navigation comes from `GET /api/categories/tree`
 - Category tree is the only source of visible storefront categories
-- Live catalog categories are currently `blouse` and `mangalsutra`
+- Live catalog categories are currently `blouse`, `mangalsutra`, and `printed-sarees`
 - Home merchandising remains pinned to `blouse`
 - Non-live categories stay visible and render coming-soon pages without product/facet fetches
 

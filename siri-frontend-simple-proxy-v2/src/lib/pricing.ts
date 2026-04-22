@@ -15,10 +15,21 @@ function roundPercent(value: number) {
   return Math.max(0, Math.round(value));
 }
 
+const moneyFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  maximumFractionDigits: 0,
+});
+
 export function formatMoney(value: unknown) {
-  return `₹${asMoney(value)}`;
+  return moneyFormatter.format(asMoney(value));
 }
 
+/**
+ * Storefront screens store base price and discount metadata, then compute the
+ * customer-facing effective price at runtime so cards, PDP, wishlist, and price
+ * filters all use the same pricing semantics.
+ */
 export function getPriceDisplay(input?: PriceInput | null) {
   const price = asMoney(input?.price);
   const effectivePrice = asMoney(input?.effectivePrice || price);

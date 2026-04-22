@@ -11,6 +11,7 @@ import {
   updateCustomerAddress,
   type CustomerAddress,
 } from "@/lib/accountApi";
+import { STOREFRONT_STRINGS } from "@/lib/strings";
 
 const EMPTY_FORM = {
   id: "",
@@ -26,14 +27,14 @@ const EMPTY_FORM = {
 };
 
 const ADDRESS_FIELDS = [
-  ["fullName", "Full Name"],
-  ["phone", "Phone"],
-  ["line1", "Address Line 1"],
-  ["line2", "Address Line 2"],
-  ["city", "City"],
-  ["state", "State"],
-  ["postalCode", "Postal Code"],
-  ["country", "Country"],
+  ["fullName", STOREFRONT_STRINGS.account.addresses.fields.fullName],
+  ["phone", STOREFRONT_STRINGS.account.addresses.fields.phone],
+  ["line1", STOREFRONT_STRINGS.account.addresses.fields.line1],
+  ["line2", STOREFRONT_STRINGS.account.addresses.fields.line2],
+  ["city", STOREFRONT_STRINGS.account.addresses.fields.city],
+  ["state", STOREFRONT_STRINGS.account.addresses.fields.state],
+  ["postalCode", STOREFRONT_STRINGS.account.addresses.fields.postalCode],
+  ["country", STOREFRONT_STRINGS.account.addresses.fields.country],
 ] as const;
 
 export default function AddressesPage() {
@@ -56,7 +57,7 @@ export default function AddressesPage() {
         const payload = await fetchCustomerAddresses(accessToken);
         if (!cancelled) setAddresses(payload.addresses || []);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load addresses");
+        if (!cancelled) setError(err instanceof Error ? err.message : STOREFRONT_STRINGS.account.addresses.fallbackError);
       }
     }
     load();
@@ -83,7 +84,7 @@ export default function AddressesPage() {
       setAddresses(refreshed.addresses || []);
       setForm(EMPTY_FORM);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save address");
+      setError(err instanceof Error ? err.message : STOREFRONT_STRINGS.account.addresses.saveFailed);
     }
   };
 
@@ -96,7 +97,7 @@ export default function AddressesPage() {
   };
 
   return (
-    <AccountShell title="Saved Addresses" subtitle="Save delivery addresses for a faster checkout when customer ordering is enabled.">
+    <AccountShell title={STOREFRONT_STRINGS.account.addresses.title} subtitle={STOREFRONT_STRINGS.account.addresses.subtitle}>
       {error ? <div className="status-banner status-banner--error">{error}</div> : null}
       <div className="account-addresses">
         <form className="account-addresses__form" onSubmit={submit}>
@@ -118,12 +119,12 @@ export default function AddressesPage() {
               checked={!!form.isDefault}
               onChange={(event) => setForm((current) => ({ ...current, isDefault: event.target.checked }))}
             />
-            <span>Set as default address</span>
+            <span>{STOREFRONT_STRINGS.account.addresses.defaultCheckbox}</span>
           </label>
           <div className="account-addresses__actions">
-            <button type="submit" className="primary-button">{editing ? "Update Address" : "Save Address"}</button>
+            <button type="submit" className="primary-button">{editing ? STOREFRONT_STRINGS.account.addresses.actions.update : STOREFRONT_STRINGS.account.addresses.actions.save}</button>
             {editing ? (
-              <button type="button" className="secondary-button" onClick={() => setForm(EMPTY_FORM)}>Cancel</button>
+              <button type="button" className="secondary-button" onClick={() => setForm(EMPTY_FORM)}>{STOREFRONT_STRINGS.account.addresses.actions.cancel}</button>
             ) : null}
           </div>
         </form>
@@ -133,7 +134,7 @@ export default function AddressesPage() {
             <div key={address.id} className="account-addresses__item">
               <div className="account-addresses__item-head">
                 <strong>{address.fullName}</strong>
-                {address.isDefault ? <span className="category-card__badge">Default</span> : null}
+                {address.isDefault ? <span className="category-card__badge">{STOREFRONT_STRINGS.account.addresses.defaultBadge}</span> : null}
               </div>
               <p className="section-copy">
                 {address.line1}
@@ -146,14 +147,14 @@ export default function AddressesPage() {
                 {address.phone}
               </p>
               <div className="account-addresses__item-actions">
-                <button type="button" className="secondary-button" onClick={() => setForm(address)}>Edit</button>
-                <button type="button" className="secondary-button" onClick={() => removeAddress(address.id)}>Delete</button>
+                <button type="button" className="secondary-button" onClick={() => setForm(address)}>{STOREFRONT_STRINGS.account.addresses.actions.edit}</button>
+                <button type="button" className="secondary-button" onClick={() => removeAddress(address.id)}>{STOREFRONT_STRINGS.account.addresses.actions.delete}</button>
               </div>
             </div>
           )) : (
             <div className="coming-soon">
-              <h2 className="coming-soon__title">No saved addresses yet.</h2>
-              <p className="coming-soon__copy">Add your first address to make future checkout faster.</p>
+              <h2 className="coming-soon__title">{STOREFRONT_STRINGS.account.addresses.emptyTitle}</h2>
+              <p className="coming-soon__copy">{STOREFRONT_STRINGS.account.addresses.emptyCopy}</p>
             </div>
           )}
         </div>

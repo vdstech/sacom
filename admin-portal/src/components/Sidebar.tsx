@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MENU_ITEMS, hasAnyPermission } from "@/lib/permissions";
 import { useAuth } from "@/lib/auth";
+import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
 
 export function Sidebar() {
   const { me } = useAuth();
@@ -12,7 +13,7 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-title">Admin Portal</div>
+      <div className="sidebar-title">{ADMIN_UI_STRINGS.brand.portalTitle}</div>
       <nav className="nav-list">
         {MENU_ITEMS.filter((item) => hasAnyPermission(perms, item.anyOf)).map((item) => {
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);

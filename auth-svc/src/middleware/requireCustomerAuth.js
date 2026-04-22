@@ -28,6 +28,8 @@ export async function requireCustomerAuth(req, res, next) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
+    // Customer API routes trust the access token only after confirming the backing
+    // refresh-session still exists and has not expired in MongoDB.
     const session = await CustomerSession.findOne({ _id: sessionId, customer: customerId })
       .select("customer expiresAt lastSeenAt")
       .lean();

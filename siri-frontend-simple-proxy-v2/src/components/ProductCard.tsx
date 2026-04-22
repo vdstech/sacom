@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ProductListItem } from "@/lib/storeApi";
 import { formatMoney, getPriceDisplay } from "@/lib/pricing";
+import { STOREFRONT_STRINGS } from "@/lib/strings";
 
 export function ProductCard({ product }: { product: ProductListItem }) {
   const price = getPriceDisplay(product.defaultVariant);
@@ -20,20 +21,15 @@ export function ProductCard({ product }: { product: ProductListItem }) {
             className="product-card__image"
           />
         ) : (
-          <div className="product-card__image product-card__image--empty">Coming Soon</div>
+          <div className="product-card__image product-card__image--empty">{STOREFRONT_STRINGS.productCard.emptyImage}</div>
         )}
-        <div className="product-card__thumbs" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
       </Link>
       <div className="product-card__body">
-        <div className="product-card__eyebrow">{product.categorySlug || "Siri Collections"}</div>
+        <div className="product-card__eyebrow">{product.categorySlug || STOREFRONT_STRINGS.brand.name}</div>
         <Link href={`/products/${product.slug}`} className="product-card__title">
           {product.title}
         </Link>
-        <div className="product-card__copy">{product.shortDescription || "Curated collection"}</div>
+        <div className="product-card__copy">{product.shortDescription || STOREFRONT_STRINGS.productCard.fallbackDescription}</div>
         <div className="product-card__footer">
           <div className="product-card__price">
             <strong>{formatMoney(price.finalPrice)}</strong>
@@ -45,7 +41,7 @@ export function ProductCard({ product }: { product: ProductListItem }) {
             ) : null}
           </div>
           <Link href={`/products/${product.slug}`} className="product-card__link">
-            View Details
+            {STOREFRONT_STRINGS.productCard.viewDetails}
           </Link>
         </div>
       </div>

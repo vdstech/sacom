@@ -2,7 +2,7 @@ import { StoreRequestError, type StoreCategoryNode } from "@/lib/storeApi";
 import type { UiNode } from "@/lib/types";
 
 export const PRIMARY_MERCH_CATEGORY_SLUG = "blouse";
-export const LIVE_CATEGORY_SLUGS = new Set(["blouse", "mangalsutra"]);
+export const LIVE_CATEGORY_SLUGS = new Set(["blouse", "mangalsutra", "printed-sarees"]);
 
 export function normalizeCategorySlug(value: unknown) {
   return String(value || "").trim().toLowerCase();

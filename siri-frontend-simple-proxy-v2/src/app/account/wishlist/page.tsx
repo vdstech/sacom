@@ -6,6 +6,7 @@ import { AccountShell } from "@/components/AccountShell";
 import { ProductCard } from "@/components/ProductCard";
 import { useAccount } from "@/components/AccountProvider";
 import { fetchCustomerWishlist, removeCustomerWishlistItem, type CustomerWishlistItem } from "@/lib/accountApi";
+import { STOREFRONT_STRINGS } from "@/lib/strings";
 
 export default function WishlistPage() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function WishlistPage() {
         const payload = await fetchCustomerWishlist(accessToken);
         if (!cancelled) setItems(payload.items || []);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load wishlist");
+        if (!cancelled) setError(err instanceof Error ? err.message : STOREFRONT_STRINGS.account.wishlist.fallbackError);
       }
     }
     load();
@@ -42,12 +43,12 @@ export default function WishlistPage() {
   };
 
   return (
-    <AccountShell title="Wishlist" subtitle="Saved products stay ready here while you browse the catalog.">
+    <AccountShell title={STOREFRONT_STRINGS.account.wishlist.title} subtitle={STOREFRONT_STRINGS.account.wishlist.subtitle}>
       {error ? <div className="status-banner status-banner--error">{error}</div> : null}
       {!items.length ? (
         <div className="coming-soon">
-          <h2 className="coming-soon__title">Your wishlist is empty.</h2>
-          <p className="coming-soon__copy">Add products from the product detail page to keep them here.</p>
+          <h2 className="coming-soon__title">{STOREFRONT_STRINGS.account.wishlist.emptyTitle}</h2>
+          <p className="coming-soon__copy">{STOREFRONT_STRINGS.account.wishlist.emptyCopy}</p>
         </div>
       ) : (
         <div className="account-wishlist">
@@ -56,7 +57,7 @@ export default function WishlistPage() {
               <div key={item._id} className="account-wishlist__item">
                 <ProductCard product={item} />
                 <button type="button" className="secondary-button account-wishlist__remove" onClick={() => removeItem(item._id)}>
-                  Remove
+                  {STOREFRONT_STRINGS.account.wishlist.remove}
                 </button>
               </div>
             ))}

@@ -6,6 +6,7 @@ import { ProtectedPage } from "@/components/ProtectedPage";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
 import {
   buildHierarchyTree,
   type CategoryHierarchyNode,
@@ -87,7 +88,7 @@ export default function CategoriesPage() {
               className="secondary"
               style={{ padding: "2px 8px", minWidth: 28 }}
               onClick={() => toggleExpanded(node.id)}
-              aria-label={isExpanded ? "Collapse" : "Expand"}
+              aria-label={isExpanded ? ADMIN_UI_STRINGS.categories.tree.collapse : ADMIN_UI_STRINGS.categories.tree.expand}
             >
               {isExpanded ? "-" : "+"}
             </button>
@@ -98,7 +99,7 @@ export default function CategoriesPage() {
           <div style={{ minWidth: 200, opacity: 0.85 }}>{category.slug}</div>
           <div style={{ minWidth: 70 }}>{String(category.sortOrder || 0)}</div>
           <div style={{ minWidth: 90 }}><StatusBadge active={!!category.isActive} /></div>
-          <Link href={`/admin/categories/${category._id}`}><button className="secondary">Edit</button></Link>
+          <Link href={`/admin/categories/${category._id}`}><button className="secondary">{ADMIN_UI_STRINGS.common.edit}</button></Link>
         </div>
         {hasChildren && isExpanded ? node.children.map(renderTreeNode) : null}
       </div>
@@ -108,9 +109,9 @@ export default function CategoriesPage() {
   return (
     <ProtectedPage anyOf={["category:read", "category:write", "category:delete"]}>
       <section className="card row">
-        <h1 style={{ marginRight: "auto" }}>Categories</h1>
-        <Link href="/admin/categories/new"><button>Create Category</button></Link>
-        <button className="secondary" onClick={load}>Refresh</button>
+        <h1 style={{ marginRight: "auto" }}>{ADMIN_UI_STRINGS.categories.title}</h1>
+        <Link href="/admin/categories/new"><button>{ADMIN_UI_STRINGS.categories.createCategory}</button></Link>
+        <button className="secondary" onClick={load}>{ADMIN_UI_STRINGS.common.refresh}</button>
       </section>
       {error ? <div className="error">{error}</div> : null}
       <section className="card">
@@ -124,11 +125,11 @@ export default function CategoriesPage() {
           }}
         >
           <span style={{ width: 28 }} />
-          <span style={{ minWidth: 220 }}>Name</span>
-          <span style={{ minWidth: 200 }}>Slug</span>
-          <span style={{ minWidth: 70 }}>Sort</span>
-          <span style={{ minWidth: 90 }}>Status</span>
-          <span>Action</span>
+          <span style={{ minWidth: 220 }}>{ADMIN_UI_STRINGS.categories.table.name}</span>
+          <span style={{ minWidth: 200 }}>{ADMIN_UI_STRINGS.categories.table.slug}</span>
+          <span style={{ minWidth: 70 }}>{ADMIN_UI_STRINGS.categories.table.sort}</span>
+          <span style={{ minWidth: 90 }}>{ADMIN_UI_STRINGS.categories.table.status}</span>
+          <span>{ADMIN_UI_STRINGS.categories.table.action}</span>
         </div>
         <div style={{ display: "grid", gap: 2 }}>
           {tree.map(renderTreeNode)}

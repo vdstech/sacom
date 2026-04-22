@@ -19,6 +19,10 @@ import {
   normalizeShippingWithDefaults,
 } from "./defaultMetadata.js";
 
+// This controller is the product read/write boundary for both admin and storefront
+// traffic. It owns the runtime effective-price calculation, storefront facet
+// aggregation, and DTO shaping so downstream UIs do not have to understand raw
+// MongoDB document layout.
 function slugify(text) {
   return String(text || "")
     .trim()

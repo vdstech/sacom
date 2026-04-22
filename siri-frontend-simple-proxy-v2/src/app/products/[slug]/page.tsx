@@ -17,11 +17,20 @@ import {
   normalizeCategorySlug,
   toTechnicalBannerMessage,
 } from "@/lib/storefront";
+import { STOREFRONT_STRINGS } from "@/lib/strings";
 
 const TABS = ["description", "dry-clean", "shipping", "returns"] as const;
 
 function formatVariantMeta(variant: ProductVariant) {
-  return (variant.colors || []).map((entry) => entry?.name).filter(Boolean).join(", ") || "Variant";
+  return (variant.colors || []).map((entry) => entry?.name).filter(Boolean).join(", ") || STOREFRONT_STRINGS.product.variantFallback;
+}
+
+function getVariantSwatchImageUrl(variant: ProductVariant) {
+  return String(variant.images?.[0]?.url || "").trim();
+}
+
+function getVariantSwatchHex(variant: ProductVariant) {
+  return String(variant.colors?.find((entry) => entry?.hex)?.hex || "").trim();
 }
 
 export default function ProductDetailPage() {
@@ -180,18 +189,18 @@ export default function ProductDetailPage() {
     }
     try {
       await addCustomerWishlistItem(accessToken, product._id);
-      setWishlistMessage("Saved to wishlist");
+      setWishlistMessage(STOREFRONT_STRINGS.product.wishlistSaved);
     } catch (err) {
-      setWishlistMessage(err instanceof Error ? err.message : "Unable to save wishlist item");
+      setWishlistMessage(err instanceof Error ? err.message : STOREFRONT_STRINGS.product.wishlistFailed);
     }
   };
 
   const tabContent = useMemo(() => {
     if (!product) return "";
-    if (activeTab === "description") return product.description || product.shortDescription || "Description coming soon.";
-    if (activeTab === "dry-clean") return product.care?.text || "Dry clean guidance will be added shortly.";
-    if (activeTab === "shipping") return product.shipping?.text || "Shipping details coming soon.";
-    return `${product.returnPolicy?.text || "Return and exchange details coming soon."}\n\nReturnable: ${product.returnPolicy?.returnable ? "Yes" : "No"}\nEligible Days: ${Number(product.returnPolicy?.windowDays || 0)}`;
+    if (activeTab === "description") return product.description || product.shortDescription || STOREFRONT_STRINGS.product.descriptionFallback;
+    if (activeTab === "dry-clean") return product.care?.text || STOREFRONT_STRINGS.product.dryCleanFallback;
+    if (activeTab === "shipping") return product.shipping?.text || STOREFRONT_STRINGS.product.shippingFallback;
+    return `${product.returnPolicy?.text || STOREFRONT_STRINGS.product.returnsFallback}\n\nReturnable: ${product.returnPolicy?.returnable ? STOREFRONT_STRINGS.product.returnableYes : STOREFRONT_STRINGS.product.returnableNo}\nEligible Days: ${Number(product.returnPolicy?.windowDays || 0)}`;
   }, [activeTab, product]);
 
   const galleryImages = selectedVariant?.images?.length
@@ -199,12 +208,15 @@ export default function ProductDetailPage() {
     : (selectedVariant?.images?.[0]?.url ? [{ url: selectedVariant.images[0].url }] : []);
   const activeImage = galleryImages[activeImageIndex] || galleryImages[0] || null;
   const price = getPriceDisplay(selectedVariant);
+  const selectedVariantLabel = selectedVariant ? formatVariantMeta(selectedVariant) : STOREFRONT_STRINGS.product.variantFallback;
+  const variants = product?.variants || [];
+  const hasMultipleVariants = variants.length > 1;
 
   return (
     <section className="section">
-      {loading ? <div className="section-copy">Loading product…</div> : null}
+      {loading ? <div className="section-copy">{STOREFRONT_STRINGS.product.loading}</div> : null}
       {technicalError ? <div className="status-banner status-banner--error">{technicalError}</div> : null}
-      {!loading && notFound ? <div className="section-copy">Product not found.</div> : null}
+      {!loading && notFound ? <div className="section-copy">{STOREFRONT_STRINGS.product.notFound}</div> : null}
 
       {product ? (
         <>
@@ -251,9 +263,8 @@ export default function ProductDetailPage() {
             </div>
 
             <div className="product-info">
-              <div className="section-kicker">{product.categorySlug || "Collection"}</div>
+              <div className="section-kicker">{product.categorySlug || STOREFRONT_STRINGS.brand.fallbackCategoryLabel}</div>
               <h1 className="product-detail__title">{product.title}</h1>
-              <div className="product-detail__copy">{product.description || product.shortDescription}</div>
               <div className="product-price">
                 <div className="product-price__amounts">
                   <strong>{formatMoney(price.finalPrice)}</strong>
@@ -264,27 +275,50 @@ export default function ProductDetailPage() {
                     </div>
                   ) : null}
                 </div>
-                <span className="section-copy">{selectedVariant?.availability ? "In stock" : "Made visible for future launch"}</span>
+                <span className="section-copy">{selectedVariant?.availability ? STOREFRONT_STRINGS.product.inStock : STOREFRONT_STRINGS.product.futureLaunchVisible}</span>
               </div>
 
-              <div>
-                <div className="section-kicker">Select Variant</div>
-                <div className="variant-pills">
-                  {(product.variants || []).map((variant) => (
-                    <button
-                      type="button"
-                      key={variant._id}
-                      className={`filter-chip ${selectedVariantId === variant._id ? "is-active" : ""}`}
-                      onClick={() => setSelectedVariantId(variant._id)}
-                    >
-                      {formatVariantMeta(variant)}
-                    </button>
-                  ))}
+              {hasMultipleVariants ? (
+                <div>
+                  <div className="section-kicker">{STOREFRONT_STRINGS.product.selectVariant}</div>
+                  <div className="product-variant-rail" role="list" aria-label={STOREFRONT_STRINGS.product.selectVariant}>
+                    {variants.map((variant) => (
+                      <div key={variant._id} className="product-variant-rail__item" role="listitem">
+                        <button
+                          type="button"
+                          className={`product-variant-swatch ${selectedVariantId === variant._id ? "is-active" : ""}`}
+                          onClick={() => setSelectedVariantId(variant._id)}
+                          aria-pressed={selectedVariantId === variant._id}
+                          aria-label={`Select ${formatVariantMeta(variant)}`}
+                          title={formatVariantMeta(variant)}
+                        >
+                          {getVariantSwatchImageUrl(variant) ? (
+                            <img
+                              src={getVariantSwatchImageUrl(variant)}
+                              alt={formatVariantMeta(variant)}
+                              className="product-variant-swatch__image"
+                            />
+                          ) : getVariantSwatchHex(variant) ? (
+                            <span
+                              className="product-variant-swatch__color"
+                              style={{ backgroundColor: getVariantSwatchHex(variant) }}
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <span className="product-variant-swatch__text">
+                              {formatVariantMeta(variant).slice(0, 2).toUpperCase()}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="product-variant-rail__label">{selectedVariantLabel}</div>
                 </div>
-              </div>
+              ) : null}
 
               <div>
-                <div className="section-kicker">Select Size</div>
+                <div className="section-kicker">{STOREFRONT_STRINGS.product.selectSize}</div>
                 <div className="size-grid">
                   {(selectedVariant?.stock || []).map((row) => {
                     const disabled = Number(row.quantity || 0) <= 0;
@@ -296,7 +330,7 @@ export default function ProductDetailPage() {
                         onClick={() => !disabled && setSelectedStockKey(String(row.stockKey || ""))}
                         disabled={disabled}
                       >
-                        {row.sizeLabel || "Size"}
+                        {row.sizeLabel || STOREFRONT_STRINGS.product.fallbackSize}
                       </button>
                     );
                   })}
@@ -321,19 +355,21 @@ export default function ProductDetailPage() {
                   disabled={!selectedStock || Number(selectedStock.quantity || 0) <= 0}
                   onClick={handleAddToCart}
                 >
-                  Add to Cart
+                  {STOREFRONT_STRINGS.product.addToCart}
                 </button>
                 <button type="button" className="secondary-button" onClick={handleAddToWishlist}>
-                  Save to Wishlist
+                  {STOREFRONT_STRINGS.product.saveToWishlist}
                 </button>
               </div>
               {wishlistMessage ? <div className="section-copy">{wishlistMessage}</div> : null}
 
+              <div className="product-detail__copy">{product.description || product.shortDescription}</div>
+
               <div className="tab-list">
-                <button type="button" className={`tab-button ${activeTab === "description" ? "is-active" : ""}`} onClick={() => setActiveTab("description")}>Description</button>
-                <button type="button" className={`tab-button ${activeTab === "dry-clean" ? "is-active" : ""}`} onClick={() => setActiveTab("dry-clean")}>Dry Clean</button>
-                <button type="button" className={`tab-button ${activeTab === "shipping" ? "is-active" : ""}`} onClick={() => setActiveTab("shipping")}>Shipping</button>
-                <button type="button" className={`tab-button ${activeTab === "returns" ? "is-active" : ""}`} onClick={() => setActiveTab("returns")}>Return &amp; Exchange</button>
+                <button type="button" className={`tab-button ${activeTab === "description" ? "is-active" : ""}`} onClick={() => setActiveTab("description")}>{STOREFRONT_STRINGS.product.tabs.description}</button>
+                <button type="button" className={`tab-button ${activeTab === "dry-clean" ? "is-active" : ""}`} onClick={() => setActiveTab("dry-clean")}>{STOREFRONT_STRINGS.product.tabs.dryClean}</button>
+                <button type="button" className={`tab-button ${activeTab === "shipping" ? "is-active" : ""}`} onClick={() => setActiveTab("shipping")}>{STOREFRONT_STRINGS.product.tabs.shipping}</button>
+                <button type="button" className={`tab-button ${activeTab === "returns" ? "is-active" : ""}`} onClick={() => setActiveTab("returns")}>{STOREFRONT_STRINGS.product.tabs.returns}</button>
               </div>
               <div className="tab-panel">{tabContent}</div>
             </div>
@@ -342,8 +378,8 @@ export default function ProductDetailPage() {
           <section className="section">
             <div className="section-header">
               <div>
-                <div className="section-kicker">Recently Viewed</div>
-                <h2 className="section-title">Same Category Inspiration</h2>
+                <div className="section-kicker">{STOREFRONT_STRINGS.product.recentlyViewed}</div>
+                <h2 className="section-title">{STOREFRONT_STRINGS.product.sameCategoryInspiration}</h2>
               </div>
             </div>
             {recentlyViewed.length ? (
@@ -352,7 +388,7 @@ export default function ProductDetailPage() {
               </div>
             ) : (
               <div className="coming-soon">
-                <h3 className="coming-soon__title">Start browsing this category to build your recently viewed rail.</h3>
+                <h3 className="coming-soon__title">{STOREFRONT_STRINGS.product.recentlyViewedEmpty}</h3>
               </div>
             )}
           </section>
@@ -361,8 +397,8 @@ export default function ProductDetailPage() {
             <section className="section">
               <div className="section-header">
                 <div>
-                  <div className="section-kicker">Featured Picks</div>
-                  <h2 className="section-title">You May Also Like</h2>
+                  <div className="section-kicker">{STOREFRONT_STRINGS.product.featuredPicks}</div>
+                  <h2 className="section-title">{STOREFRONT_STRINGS.product.youMayAlsoLike}</h2>
                 </div>
               </div>
               <div className="card-grid">
@@ -373,7 +409,7 @@ export default function ProductDetailPage() {
 
           {product.categorySlug ? (
             <div className="section">
-              <Link href={categoryHref || `/c/${product.categorySlug}`} className="secondary-button">Back to {product.categorySlug}</Link>
+              <Link href={categoryHref || `/c/${product.categorySlug}`} className="secondary-button">{STOREFRONT_STRINGS.product.backToCategory(product.categorySlug)}</Link>
             </div>
           ) : null}
         </>

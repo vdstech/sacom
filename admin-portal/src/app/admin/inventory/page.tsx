@@ -5,6 +5,7 @@ import { ProtectedPage } from "@/components/ProtectedPage";
 import { DataTable } from "@/components/DataTable";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
+import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
 
 type InventoryDoc = {
   _id: string;
@@ -37,9 +38,9 @@ export default function InventoryPage() {
   useEffect(() => { load(); }, []);
 
   const editItem = async (item: InventoryDoc) => {
-    const quantity = window.prompt("Quantity", String(item.quantity || 0));
+    const quantity = window.prompt(ADMIN_UI_STRINGS.inventory.prompts.quantity, String(item.quantity || 0));
     if (quantity === null) return;
-    const reorderLevel = window.prompt("Reorder level", String(item.reorderLevel || 0));
+    const reorderLevel = window.prompt(ADMIN_UI_STRINGS.inventory.prompts.reorderLevel, String(item.reorderLevel || 0));
     if (reorderLevel === null) return;
 
     await apiRequest(`/api/admin/products/inventory/${item._id}`, {
@@ -58,19 +59,19 @@ export default function InventoryPage() {
   return (
     <ProtectedPage anyOf={["inventory:read", "inventory:write"]}>
       <section className="card row">
-        <h1 style={{ marginRight: "auto" }}>Stock</h1>
-        <button className="secondary" onClick={load}>Refresh</button>
+        <h1 style={{ marginRight: "auto" }}>{ADMIN_UI_STRINGS.inventory.title}</h1>
+        <button className="secondary" onClick={load}>{ADMIN_UI_STRINGS.common.refresh}</button>
       </section>
       {error ? <div className="error">{error}</div> : null}
       <DataTable
-        headers={["Stock Key", "Variant", "Size", "Quantity", "Reorder Level", "Action"]}
+        headers={[...ADMIN_UI_STRINGS.inventory.headers]}
         rows={items.map((item) => [
           item.stockKey,
           item.variantId || "-",
           item.sizeLabel || "-",
           String(item.quantity || 0),
           String(item.reorderLevel || 0),
-          <button key={item._id} className="secondary" onClick={() => editItem(item)}>Edit</button>,
+          <button key={item._id} className="secondary" onClick={() => editItem(item)}>{ADMIN_UI_STRINGS.common.edit}</button>,
         ])}
       />
     </ProtectedPage>

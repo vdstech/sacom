@@ -1,5 +1,7 @@
 "use client";
 
+// AccountProvider bootstraps storefront customer auth from the refresh-cookie
+// flow and keeps the short-lived access token in browser state/local storage.
 import {
   createContext,
   useContext,

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ProductCard } from "@/components/ProductCard";
 import {
@@ -18,8 +18,11 @@ import {
   normalizeCategorySlug,
   toTechnicalBannerMessage,
 } from "@/lib/storefront";
+import { formatMoney } from "@/lib/pricing";
+import { STOREFRONT_STRINGS } from "@/lib/strings";
 
 const PINNED_FACET_ORDER = ["work", "color", "size", "fabric"];
+const PRODUCTS_PAGE_SIZE = 12;
 
 function normalizeFacetLabel(value: string) {
   return String(value || "").trim().toLowerCase();
@@ -35,12 +38,27 @@ function clampPrice(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function formatPrice(value: number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(value);
+function buildProductQuery(
+  categorySlug: string,
+  activeFacetMap: Map<string, string[]>,
+  searchParams: Pick<URLSearchParams, "get">,
+  options: { page?: number; limit?: number } = {}
+) {
+  const query = new URLSearchParams();
+  query.set("categorySlug", categorySlug);
+
+  for (const [key, values] of activeFacetMap.entries()) {
+    if (values.length) query.set(`facet.${key}`, values.join(","));
+  }
+
+  const minPrice = readPositiveNumber(searchParams.get("minPrice"));
+  const maxPrice = readPositiveNumber(searchParams.get("maxPrice"));
+  if (minPrice !== null) query.set("minPrice", String(minPrice));
+  if (maxPrice !== null) query.set("maxPrice", String(maxPrice));
+  if (options.page) query.set("page", String(options.page));
+  if (options.limit) query.set("limit", String(options.limit));
+
+  return query;
 }
 
 function SearchIcon() {
@@ -70,9 +88,18 @@ export default function CategoryPage() {
   const [notFound, setNotFound] = useState(false);
   const [catalogUnavailable, setCatalogUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreProducts, setHasMoreProducts] = useState(false);
+  const [page, setPage] = useState(1);
   const [technicalError, setTechnicalError] = useState("");
   const [facetSearch, setFacetSearch] = useState<Record<string, string>>({});
+  const [currentListingSlug, setCurrentListingSlug] = useState("");
+  const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
+  const listingContextRef = useRef("");
+  const loadingMoreRef = useRef(false);
+  const hasMoreProductsRef = useRef(false);
   const searchKey = searchParams.toString();
+  const listingContextKey = `${routePath}?${searchKey}`;
 
   const activeFacetMap = useMemo(() => {
     const entries = Array.from(searchParams.entries()).filter(([key, value]) => key.startsWith("facet.") && value);
@@ -100,12 +127,24 @@ export default function CategoryPage() {
   }, [facets]);
 
   useEffect(() => {
+    loadingMoreRef.current = loadingMore;
+  }, [loadingMore]);
+
+  useEffect(() => {
+    hasMoreProductsRef.current = hasMoreProducts;
+  }, [hasMoreProducts]);
+
+  useEffect(() => {
     if (!slugParts.length) return;
     let cancelled = false;
 
     async function load() {
       try {
+        listingContextRef.current = listingContextKey;
         setLoading(true);
+        setLoadingMore(false);
+        setHasMoreProducts(false);
+        setPage(1);
         setTechnicalError("");
         setNotFound(false);
         setCatalogUnavailable(false);
@@ -113,9 +152,12 @@ export default function CategoryPage() {
         setFeatured([]);
         setFacets([]);
         setPriceRange(null);
+        setCurrentListingSlug("");
+        loadingMoreRef.current = false;
+        hasMoreProductsRef.current = false;
 
         const categoryTree = await fetchCategoryTree();
-        if (cancelled) return;
+        if (cancelled || listingContextRef.current !== listingContextKey) return;
 
         const matchedNode = findCategoryNodeByPath(categoryTree, routePath);
         if (!matchedNode) {
@@ -129,29 +171,27 @@ export default function CategoryPage() {
           return;
         }
 
-        const query = new URLSearchParams();
-        query.set("categorySlug", normalizeCategorySlug(matchedNode.slug));
-        for (const [key, values] of activeFacetMap.entries()) {
-          if (values.length) query.set(`facet.${key}`, values.join(","));
-        }
-        const minPrice = readPositiveNumber(searchParams.get("minPrice"));
-        const maxPrice = readPositiveNumber(searchParams.get("maxPrice"));
-        if (minPrice !== null) query.set("minPrice", String(minPrice));
-        if (maxPrice !== null) query.set("maxPrice", String(maxPrice));
-
         const liveSlug = normalizeCategorySlug(matchedNode.slug);
+        const listingQuery = buildProductQuery(liveSlug, activeFacetMap, searchParams, {
+          page: 1,
+          limit: PRODUCTS_PAGE_SIZE,
+        });
+        const facetQuery = buildProductQuery(liveSlug, activeFacetMap, searchParams);
+        setCurrentListingSlug(liveSlug);
         const [listingResult, facetResult, featuredResult] = await Promise.allSettled([
-          fetchStore<ProductListItem[]>(`/products?${query.toString()}`),
-          fetchStore<{ facets?: CategoryFacet[]; priceRange?: StorePriceRange | null }>(`/products/facets?${query.toString()}`),
+          fetchStore<ProductListItem[]>(`/products?${listingQuery.toString()}`),
+          fetchStore<{ facets?: CategoryFacet[]; priceRange?: StorePriceRange | null }>(`/products/facets?${facetQuery.toString()}`),
           fetchStore<ProductListItem[]>(`/products?featured=true&categorySlug=${encodeURIComponent(liveSlug)}&limit=4`),
         ]);
 
-        if (cancelled) return;
+        if (cancelled || listingContextRef.current !== listingContextKey) return;
         if (listingResult.status === "rejected") {
           throw listingResult.reason;
         }
 
-        setProducts(listingResult.value || []);
+        const initialProducts = listingResult.value || [];
+        setProducts(initialProducts);
+        setHasMoreProducts(initialProducts.length === PRODUCTS_PAGE_SIZE);
         setFacets(
           facetResult.status === "fulfilled" && Array.isArray(facetResult.value?.facets)
             ? facetResult.value.facets
@@ -176,11 +216,15 @@ export default function CategoryPage() {
             : (featuredResult.status === "rejected" ? featuredResult.reason : null);
         setTechnicalError(optionalFailure ? toTechnicalBannerMessage(optionalFailure) : "");
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled || listingContextRef.current !== listingContextKey) return;
         setCatalogUnavailable(true);
+        setCurrentListingSlug("");
+        setHasMoreProducts(false);
         setTechnicalError(toTechnicalBannerMessage(error));
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && listingContextRef.current === listingContextKey) {
+          setLoading(false);
+        }
       }
     }
 
@@ -188,7 +232,62 @@ export default function CategoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [routePath, slugParts, activeFacetMap, searchKey, searchParams]);
+  }, [routePath, slugParts, activeFacetMap, listingContextKey, searchParams]);
+
+  useEffect(() => {
+    if (!currentListingSlug || page <= 1 || loading || catalogUnavailable) return;
+    let cancelled = false;
+
+    async function loadMoreProducts() {
+      try {
+        setLoadingMore(true);
+        const nextQuery = buildProductQuery(currentListingSlug, activeFacetMap, searchParams, {
+          page,
+          limit: PRODUCTS_PAGE_SIZE,
+        });
+        const nextProducts = await fetchStore<ProductListItem[]>(`/products?${nextQuery.toString()}`);
+        if (cancelled || listingContextRef.current !== listingContextKey) return;
+
+        setProducts((current) => {
+          const seen = new Set(current.map((product) => product._id));
+          return [...current, ...(nextProducts || []).filter((product) => !seen.has(product._id))];
+        });
+        setHasMoreProducts((nextProducts || []).length === PRODUCTS_PAGE_SIZE);
+      } catch (error) {
+        if (cancelled || listingContextRef.current !== listingContextKey) return;
+        setHasMoreProducts(false);
+        setTechnicalError(toTechnicalBannerMessage(error));
+      } finally {
+        loadingMoreRef.current = false;
+        if (!cancelled && listingContextRef.current === listingContextKey) {
+          setLoadingMore(false);
+        }
+      }
+    }
+
+    loadMoreProducts();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFacetMap, catalogUnavailable, currentListingSlug, listingContextKey, loading, page, searchParams]);
+
+  useEffect(() => {
+    if (!currentListingSlug || loading || catalogUnavailable || !hasMoreProducts) return;
+    const trigger = loadMoreTriggerRef.current;
+    if (!trigger) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting || loadingMoreRef.current || !hasMoreProductsRef.current) return;
+        loadingMoreRef.current = true;
+        setPage((current) => current + 1);
+      },
+      { rootMargin: "240px 0px" }
+    );
+
+    observer.observe(trigger);
+    return () => observer.disconnect();
+  }, [catalogUnavailable, currentListingSlug, hasMoreProducts, loading]);
 
   useEffect(() => {
     if (!priceRange) {
@@ -296,21 +395,17 @@ export default function CategoryPage() {
 
       {!loading && notFound ? (
         <div className="coming-soon">
-          <div className="status-soon">Not Found</div>
-          <h2 className="coming-soon__title">This category does not exist.</h2>
-          <p className="coming-soon__copy">
-            Choose another collection from the storefront menu. Category pages are generated from the active category tree.
-          </p>
+          <div className="status-soon">{STOREFRONT_STRINGS.category.notFound}</div>
+          <h2 className="coming-soon__title">{STOREFRONT_STRINGS.category.notFoundTitle}</h2>
+          <p className="coming-soon__copy">{STOREFRONT_STRINGS.category.notFoundCopy}</p>
         </div>
       ) : null}
 
       {!loading && categoryNode && !isLiveCategory ? (
         <div className="coming-soon">
-          <div className="status-soon">Coming Soon</div>
-          <h2 className="coming-soon__title">{heading} is visible in categories and preparing to launch.</h2>
-          <p className="coming-soon__copy">
-            The category page is intentionally published before merchandise arrives. Live categories fetch products automatically once they are launched.
-          </p>
+          <div className="status-soon">{STOREFRONT_STRINGS.category.comingSoon}</div>
+          <h2 className="coming-soon__title">{STOREFRONT_STRINGS.category.comingSoonTitle(heading)}</h2>
+          <p className="coming-soon__copy">{STOREFRONT_STRINGS.category.comingSoonCopy}</p>
         </div>
       ) : null}
 
@@ -323,18 +418,18 @@ export default function CategoryPage() {
           <div className="listing-shell">
             <div className="listing-layout">
               <aside className="filter-panel">
-                <div className="section-kicker">Filters</div>
+                <div className="section-kicker">{STOREFRONT_STRINGS.category.filters}</div>
                 <div className="filters-grid">
                   {priceRange ? (
                     <div className="filter-group filter-group--price">
                       <div className="filter-group__header">
-                        <h3>Price</h3>
+                        <h3>{STOREFRONT_STRINGS.category.price}</h3>
                       </div>
                       <div className="price-filter">
                         <div className="price-filter__values">
-                          <strong>{formatPrice(selectedMin)}</strong>
+                          <strong>{formatMoney(selectedMin)}</strong>
                           <span>to</span>
-                          <strong>{formatPrice(selectedMax)}</strong>
+                          <strong>{formatMoney(selectedMax)}</strong>
                         </div>
                         <div className="price-filter__slider">
                           <div className="price-filter__slider-base" />
@@ -371,8 +466,8 @@ export default function CategoryPage() {
                           />
                         </div>
                         <div className="price-filter__bounds">
-                          <span>{formatPrice(priceRange.min)}</span>
-                          <span>{formatPrice(priceRange.max)}</span>
+                          <span>{formatMoney(priceRange.min)}</span>
+                          <span>{formatMoney(priceRange.max)}</span>
                         </div>
                       </div>
                     </div>
@@ -391,7 +486,7 @@ export default function CategoryPage() {
                                 const value = event.target.value;
                                 setFacetSearch((current) => ({ ...current, [facet.key]: value }));
                               }}
-                              placeholder={`Search ${facet.label.toLowerCase()}`}
+                              placeholder={STOREFRONT_STRINGS.category.searchPlaceholder(facet.label)}
                               aria-label={`Search ${facet.label}`}
                             />
                           </label>
@@ -440,22 +535,24 @@ export default function CategoryPage() {
                       )}
                     </div>
                   ))}
-                  {!facets.length ? <div className="section-copy">No filters are configured for this live category yet.</div> : null}
+                  {!facets.length ? <div className="section-copy">{STOREFRONT_STRINGS.category.noFilters}</div> : null}
                 </div>
               </aside>
 
               <div>
                 {products.length ? (
-                  <div className="card-grid">
-                    {products.map((product) => <ProductCard key={product._id} product={product} />)}
+                  <div className="listing-results">
+                    <div className="card-grid">
+                      {products.map((product) => <ProductCard key={product._id} product={product} />)}
+                    </div>
+                    {hasMoreProducts ? <div ref={loadMoreTriggerRef} className="listing-sentinel" aria-hidden="true" /> : null}
+                    {loadingMore ? <div className="section-copy listing-status">{STOREFRONT_STRINGS.category.loadingMore}</div> : null}
                   </div>
                 ) : (
                   <div className="coming-soon">
-                    <div className="status-soon">Coming Soon</div>
-                    <h2 className="coming-soon__title">{heading} will appear here soon.</h2>
-                    <p className="coming-soon__copy">
-                      This route is live. Once products are active in the catalog, this listing automatically switches from placeholder state to a full merchandise grid.
-                    </p>
+                    <div className="status-soon">{STOREFRONT_STRINGS.category.comingSoon}</div>
+                    <h2 className="coming-soon__title">{STOREFRONT_STRINGS.category.emptyListingTitle(heading)}</h2>
+                    <p className="coming-soon__copy">{STOREFRONT_STRINGS.category.emptyListingCopy}</p>
                   </div>
                 )}
               </div>
@@ -468,8 +565,8 @@ export default function CategoryPage() {
         <section className="section">
           <div className="section-header">
             <div>
-              <div className="section-kicker">Featured Picks</div>
-              <h2 className="section-title">You May Also Like</h2>
+              <div className="section-kicker">{STOREFRONT_STRINGS.category.featuredPicks}</div>
+              <h2 className="section-title">{STOREFRONT_STRINGS.category.youMayAlsoLike}</h2>
             </div>
           </div>
           <div className="card-grid">
@@ -479,7 +576,7 @@ export default function CategoryPage() {
       ) : null}
 
       <div className="section">
-        <Link href="/" className="secondary-button">Back to Home</Link>
+        <Link href="/" className="secondary-button">{STOREFRONT_STRINGS.category.backToHome}</Link>
       </div>
     </div>
   );
