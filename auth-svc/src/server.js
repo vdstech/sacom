@@ -19,6 +19,8 @@ import customerMeRouter from "./customer/routes/customerMeRoute.js";
 import customerAddressRouter from "./customer/routes/customerAddressRoute.js";
 import customerWishlistRouter from "./customer/routes/customerWishlistRoute.js";
 import customerOrderRouter from "./customer/routes/customerOrderRoute.js";
+import adminOrderRouter from "./customer/routes/adminOrderRoute.js";
+import { startOrderDeliveryWorker } from "./customer/orderDeliveryWorker.js";
 import { validateRequiredEnv } from './config/validateRequiredEnv.js'
 
 const app = express()
@@ -68,6 +70,7 @@ app.use('/', authRouter)
 app.use('/auth/customer', customerAuthRouter)
 app.use('/auth/session', sessionRouter)
 app.use('/api/admin/permissions', permissionRouter)
+app.use('/api/admin/orders', adminOrderRouter)
 app.use('/api/customer/me', customerMeRouter)
 app.use('/api/customer/addresses', customerAddressRouter)
 app.use('/api/customer/wishlist', customerWishlistRouter)
@@ -89,6 +92,7 @@ app.get('/health', (req, res) => {
         const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/commerce_db'
         await connectMongo(mongoUri)
         logger.info('Connected to MongoDB at ' + mongoUri)
+        startOrderDeliveryWorker(logger)
         
         // Start HTTPS server with TLS
         try {

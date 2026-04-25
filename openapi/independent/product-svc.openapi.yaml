@@ -313,15 +313,45 @@ paths:
       tags: [Admin Inventory]
       summary: List inventory
       security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: categoryId
+          schema: { type: string }
+        - in: query
+          name: productId
+          schema: { type: string }
+        - in: query
+          name: variantId
+          schema: { type: string }
+        - in: query
+          name: sizeLabel
+          schema: { type: string }
+        - in: query
+          name: search
+          schema: { type: string }
+          description: Case-insensitive match against stock key, size label, product title, and product slug.
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1 }
       responses:
         '200':
-          description: Inventory list
+          description: Paginated inventory list
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/InventoryDocument'
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                  total: { type: integer }
+                  page: { type: integer }
+                  limit: { type: integer }
+                  totalPages: { type: integer }
   /api/admin/products/inventory/{id}:
     parameters:
       - in: path

@@ -155,6 +155,9 @@ Cart response includes:
 
 ### Inventory endpoints
 - `GET /api/admin/products/inventory/list`
+  - Optional query params: `categoryId`, `productId`, `variantId`, `sizeLabel`, `search`, `page`, `limit`
+  - `search` matches inventory `stockKey`, `sizeLabel`, and linked product `title` / `slug`
+  - Response shape: `{ items, total, page, limit, totalPages }`
 - `PATCH /api/admin/products/inventory/:id`
 
 ## Admin Write Model

@@ -20,8 +20,11 @@ async function ensureSingleRole(name) {
 }
 
 export async function seedRoleUsers() {
-  const permissions = await Permission.find().select("_id").lean();
+  const permissions = await Permission.find().select("_id code").lean();
   const permIds = permissions.map((p) => p._id);
+  const orderOperationPermIds = permissions
+    .filter((permission) => ["order:read", "order:write"].includes(permission.code))
+    .map((permission) => permission._id);
 
   const roleDefs = [
     {
@@ -40,6 +43,14 @@ export async function seedRoleUsers() {
       systemLevel: "ADMIN",
       disabled: false
     },
+    {
+      name: "ORDER_OPERATIONS",
+      description: "Operations role for order dashboard and fulfillment handling",
+      permissions: orderOperationPermIds,
+      isSystemRole: true,
+      systemLevel: "NONE",
+      disabled: false
+    },
   ];
 
   for (const def of roleDefs) {
@@ -48,7 +59,10 @@ export async function seedRoleUsers() {
 
   const superRole = await ensureSingleRole("SUPER_ADMIN");
   const adminRole = await ensureSingleRole("ADMIN");
-  if (!superRole || !adminRole) throw new Error("Role seeding failed: SUPER_ADMIN or ADMIN role missing.");
+  const orderOpsRole = await ensureSingleRole("ORDER_OPERATIONS");
+  if (!superRole || !adminRole || !orderOpsRole) {
+    throw new Error("Role seeding failed: SUPER_ADMIN, ADMIN, or ORDER_OPERATIONS role missing.");
+  }
 
   console.log("✅ Roles seeded:", roleDefs.map((r) => r.name));
 

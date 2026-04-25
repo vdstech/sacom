@@ -27,6 +27,14 @@ const StorefrontVariantReadSchema = new mongoose.Schema(
       },
     ],
     sizeLabel: { type: String, default: "" },
+    stock: [
+      {
+        stockKey: { type: String, default: "" },
+        sizeLabel: { type: String, default: "" },
+        quantity: { type: Number, default: 0 },
+        reorderLevel: { type: Number, default: 0 },
+      },
+    ],
     isDefault: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     createdAt: { type: Date, default: Date.now },

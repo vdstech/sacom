@@ -14,6 +14,11 @@ const StorefrontProductReadSchema = new mongoose.Schema(
         sortOrder: { type: Number, default: 0 },
       },
     ],
+    returnPolicy: {
+      text: { type: String, default: "" },
+      returnable: { type: Boolean, default: false },
+      windowDays: { type: Number, default: 0 },
+    },
   },
   {
     collection: "products",

@@ -10,13 +10,17 @@ export function Sidebar() {
   const { me } = useAuth();
   const pathname = usePathname();
   const perms = me?.permissions || [];
+  const isOrdersDashboardPath = pathname === "/admin/orders/dashboard" || pathname.startsWith("/admin/orders/dashboard/");
+  const isOrdersMetricsPath = pathname === "/admin/orders/metrics" || pathname.startsWith("/admin/orders/metrics/");
 
   return (
     <aside className="sidebar">
       <div className="sidebar-title">{ADMIN_UI_STRINGS.brand.portalTitle}</div>
       <nav className="nav-list">
         {MENU_ITEMS.filter((item) => hasAnyPermission(perms, item.anyOf)).map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active = item.href === "/admin/orders"
+            ? !isOrdersDashboardPath && !isOrdersMetricsPath && (pathname === item.href || pathname.startsWith(`${item.href}/`))
+            : pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link key={item.href} href={item.href} className={active ? "nav-link active" : "nav-link"}>
               {item.label}

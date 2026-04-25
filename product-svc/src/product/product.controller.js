@@ -139,6 +139,12 @@ function normalizeQueryNumber(value) {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
 }
 
+function normalizePositiveInteger(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.floor(parsed));
+}
+
 function normalizeDiscountTypeFilter(value) {
   const type = normalizeString(value).toLowerCase();
   return ["none", "percent", "flat"].includes(type) ? type : "";
@@ -314,6 +320,22 @@ async function resolveCategoryContext(query = {}) {
   }
 
   return null;
+}
+
+async function loadCategoryFilterIds(categoryId, { includeDescendants = false } = {}) {
+  const rootId = new mongoose.Types.ObjectId(categoryId);
+  if (!includeDescendants) return [rootId];
+
+  const categories = await Category.find({
+    $or: [
+      { _id: rootId },
+      { ancestors: rootId },
+    ],
+  })
+    .select("_id")
+    .lean();
+
+  return categories.map((category) => new mongoose.Types.ObjectId(category._id));
 }
 
 function getConfiguredFacetValues(product, variant, field) {
@@ -549,12 +571,13 @@ async function loadCategorySlugsById(products = []) {
 }
 
 async function listProducts(query, { audience = "storefront" } = {}) {
-  const page = Math.max(1, Number(query.page || 1));
-  const limit = Math.max(1, Number(query.limit || 20));
+  const page = normalizePositiveInteger(query.page, 1);
+  const limit = normalizePositiveInteger(query.limit, 20);
   const match = {};
   const categoryContext = await resolveCategoryContext(query);
   const facetFilters = collectFacetFilters(query);
   const commercialFilters = buildCommercialFilters(query);
+  const includeDescendants = audience === "admin";
 
   if (query.isActive === "all") {
     // admin keeps all
@@ -565,7 +588,8 @@ async function listProducts(query, { audience = "storefront" } = {}) {
   }
 
   if (categoryContext?.categoryId) {
-    match.categoryId = new mongoose.Types.ObjectId(categoryContext.categoryId);
+    const categoryIds = await loadCategoryFilterIds(categoryContext.categoryId, { includeDescendants });
+    match.categoryId = categoryIds.length === 1 ? categoryIds[0] : { $in: categoryIds };
   }
 
   if (query.q && String(query.q).trim()) {
@@ -597,11 +621,13 @@ async function listProducts(query, { audience = "storefront" } = {}) {
     })
     .filter(Boolean);
 
+  const total = filteredProducts.length;
+  const totalPages = total ? Math.ceil(total / limit) : 1;
   const paginatedProducts = filteredProducts
     .slice((page - 1) * limit, (page - 1) * limit + limit);
   const categorySlugById = await loadCategorySlugsById(paginatedProducts.map(({ product }) => product));
 
-  return paginatedProducts.map(({ product, variants }) => {
+  const items = paginatedProducts.map(({ product, variants }) => {
     const defaultVariant = buildDefaultVariant(variants);
     const colorSummary = buildColorSummary(variants);
     const otherVariantColors = colorSummary.swatches.slice(1);
@@ -626,6 +652,14 @@ async function listProducts(query, { audience = "storefront" } = {}) {
       otherVariantColors,
     });
   });
+
+  return {
+    items,
+    total,
+    page,
+    limit,
+    totalPages,
+  };
 }
 
 export async function create(req, res) {
@@ -673,8 +707,8 @@ export async function create(req, res) {
 
 export async function list(req, res) {
   try {
-    const docs = await listProducts(req.query, { audience: "storefront" });
-    res.json(docs);
+    const result = await listProducts(req.query, { audience: "storefront" });
+    res.json(result.items);
   } catch (err) {
     if (String(err?.message || "").includes("categoryId must be a valid ObjectId")) {
       return res.status(400).json({ error: "categoryId must be a valid ObjectId" });
@@ -688,11 +722,11 @@ export async function list(req, res) {
 
 export async function adminList(req, res) {
   try {
-    const docs = await listProducts({
+    const result = await listProducts({
       ...req.query,
       isActive: req.query.isActive === undefined ? "all" : req.query.isActive,
     }, { audience: "admin" });
-    res.json(docs);
+    res.json(result);
   } catch (err) {
     if (String(err?.message || "").includes("categoryId must be a valid ObjectId")) {
       return res.status(400).json({ error: "categoryId must be a valid ObjectId" });
@@ -775,8 +809,8 @@ export async function listByCategorySlug(req, res) {
     const slug = String(req.params.slug || "").trim().toLowerCase();
     const category = await Category.findOne({ slug }).lean();
     if (!category) return res.status(404).json({ error: "Category not found" });
-    const docs = await listProducts({ ...req.query, categoryId: category._id.toString() }, { audience: "storefront" });
-    res.json(docs);
+    const result = await listProducts({ ...req.query, categoryId: category._id.toString() }, { audience: "storefront" });
+    res.json(result.items);
   } catch (err) {
     if (String(err?.message || "").includes("categoryId must be a valid ObjectId")) {
       return res.status(400).json({ error: "categoryId must be a valid ObjectId" });

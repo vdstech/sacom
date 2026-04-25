@@ -37,17 +37,39 @@ export type CustomerWishlistItem = {
     imageUrl?: string;
     colors?: Array<{ name?: string; hex?: string }>;
     sizeLabel?: string;
+    stockKey?: string;
+    canMoveToCart?: boolean;
+    requiresSelection?: boolean;
   } | null;
 };
 
 export type CustomerOrderItem = {
+  id: string;
   productId?: string;
   variantId?: string;
+  categoryId?: string;
+  categoryLabel?: string;
   stockKey?: string;
   slug?: string;
   title: string;
   imageUrl?: string;
   quantity: number;
+  fulfillmentStatus?: string;
+  outboundTrackingNumber?: string;
+  collectionTrackingNumber?: string;
+  cancelRequestedAt?: string | null;
+  unpackedAt?: string | null;
+  shippedAt?: string | null;
+  deliveredAt?: string | null;
+  cancelledAt?: string | null;
+  adminCancelledAt?: string | null;
+  returnRequestedAt?: string | null;
+  collectionScheduledAt?: string | null;
+  returnReceivedAt?: string | null;
+  refundCompletedAt?: string | null;
+  returnEligible?: boolean;
+  returnEligibilityReason?: string;
+  returnWindowEndsAt?: string | null;
   currency?: string;
   listUnitPrice?: number;
   catalogDiscountType?: string;
@@ -244,10 +266,42 @@ export async function fetchCustomerOrders(token: string) {
   return requestCustomer<{ orders: CustomerOrder[] }>("/api/customer/orders", undefined, token);
 }
 
+export async function createCustomerOrder(token: string, payload: { cartToken: string; addressId: string; paymentStatus?: "paid" | "payment_failed" }) {
+  return requestCustomer<{ order: CustomerOrder }>(
+    "/api/customer/orders",
+    { method: "POST", body: JSON.stringify(payload) },
+    token
+  );
+}
+
 export async function fetchCustomerOrder(token: string, id: string) {
   return requestCustomer<{ order: CustomerOrder }>(
     `/api/customer/orders/${encodeURIComponent(id)}`,
     undefined,
+    token
+  );
+}
+
+export async function cancelCustomerOrder(token: string, id: string) {
+  return requestCustomer<{ order: CustomerOrder }>(
+    `/api/customer/orders/${encodeURIComponent(id)}/cancel`,
+    { method: "POST" },
+    token
+  );
+}
+
+export async function cancelCustomerOrderItem(token: string, orderId: string, itemId: string) {
+  return requestCustomer<{ order: CustomerOrder }>(
+    `/api/customer/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/cancel`,
+    { method: "POST" },
+    token
+  );
+}
+
+export async function requestCustomerOrderItemReturn(token: string, orderId: string, itemId: string) {
+  return requestCustomer<{ order: CustomerOrder }>(
+    `/api/customer/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/return`,
+    { method: "POST" },
     token
   );
 }

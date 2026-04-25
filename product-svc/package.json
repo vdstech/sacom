@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test:dto": "node --test src/product/response.dto.test.js src/product/defaultMetadata.test.js src/product/storefront.filters.test.js"
+    "test:dto": "node --test src/product/response.dto.test.js src/product/defaultMetadata.test.js src/product/storefront.filters.test.js src/inventory/inventory.controller.test.js"
   },
   "keywords": [
     "product"

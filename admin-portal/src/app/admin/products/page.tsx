@@ -1,14 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ProtectedPage } from "@/components/ProtectedPage";
 import { DataTable } from "@/components/DataTable";
+import { PaginationControls } from "@/components/PaginationControls";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { hasAnyPermission } from "@/lib/permissions";
+import { buildCategoryMap, getHierarchyLabel } from "@/lib/categoryHierarchy";
 import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
+
+const PAGE_SIZE = 50;
 
 type ProductDoc = {
   _id: string;
@@ -40,6 +44,15 @@ type ProductDoc = {
 type CategoryDoc = {
   _id: string;
   name: string;
+  parent: string | null;
+};
+
+type PaginatedResponse<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 };
 
 export default function ProductsPage() {
@@ -47,9 +60,13 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<ProductDoc[]>([]);
   const [categories, setCategories] = useState<CategoryDoc[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const canDelete = hasAnyPermission(me?.permissions || [], ["product:delete"]);
+  const categoryMap = useMemo(() => buildCategoryMap(categories), [categories]);
 
   const loadCategories = async () => {
     try {
@@ -69,8 +86,10 @@ export default function ProductsPage() {
     try {
       const params = new URLSearchParams();
       if (selectedCategoryId) params.set("categoryId", selectedCategoryId);
+      params.set("page", String(page));
+      params.set("limit", String(PAGE_SIZE));
 
-      const payload = await apiRequest<ProductDoc[]>(
+      const payload = await apiRequest<PaginatedResponse<ProductDoc>>(
         `/api/admin/products${params.toString() ? `?${params.toString()}` : ""}`,
         {
           service: "product",
@@ -78,7 +97,9 @@ export default function ProductsPage() {
           onUnauthorized: refreshAccessToken,
         }
       );
-      setProducts(payload || []);
+      setProducts(payload?.items || []);
+      setTotal(Number(payload?.total || 0));
+      setTotalPages(Math.max(1, Number(payload?.totalPages || 1)));
       setError("");
     } catch (err) {
       setError((err as Error).message);
@@ -93,7 +114,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     load();
-  }, [selectedCategoryId]);
+  }, [selectedCategoryId, page]);
 
   const renderDiscount = (product: ProductDoc) => {
     const discount = product.defaultVariant?.discount;
@@ -114,12 +135,15 @@ export default function ProductsPage() {
           {ADMIN_UI_STRINGS.products.categoryLabel}
           <select
             value={selectedCategoryId}
-            onChange={(e) => setSelectedCategoryId(e.target.value)}
+            onChange={(e) => {
+              setSelectedCategoryId(e.target.value);
+              setPage(1);
+            }}
             style={{ width: "100%" }}
           >
             <option value="">{ADMIN_UI_STRINGS.products.allCategories}</option>
             {categories.map((category) => (
-              <option key={category._id} value={category._id}>{category.name}</option>
+              <option key={category._id} value={category._id}>{getHierarchyLabel(category._id, categoryMap) || category.name}</option>
             ))}
           </select>
         </label>
@@ -213,6 +237,10 @@ export default function ProductsPage() {
                       token: accessToken,
                       onUnauthorized: refreshAccessToken,
                     });
+                    if (products.length === 1 && page > 1) {
+                      setPage(page - 1);
+                      return;
+                    }
                     load();
                   } catch (err) {
                     setError((err as Error).message);
@@ -224,6 +252,15 @@ export default function ProductsPage() {
             ) : null}
           </div>,
         ])}
+      />
+      <PaginationControls
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        onPrevious={() => setPage((current) => Math.max(1, current - 1))}
+        onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+        previousLabel={ADMIN_UI_STRINGS.common.previous}
+        nextLabel={ADMIN_UI_STRINGS.common.next}
       />
     </ProtectedPage>
   );
