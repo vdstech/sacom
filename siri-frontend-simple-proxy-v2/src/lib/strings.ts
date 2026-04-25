@@ -5,6 +5,8 @@ export const STOREFRONT_STRINGS = {
     fallbackCategorySlug: "collection",
   },
   navigation: {
+    home: "Home",
+    newArrivals: "New Arrivals",
     account: {
       welcome: "Welcome",
       welcomeBack: "Hello",
@@ -22,55 +24,93 @@ export const STOREFRONT_STRINGS = {
   },
   home: {
     loading: "Loading storefront…",
-    heroEyebrow: "Category First Luxury Storefront",
-    heroTitle: "Celebrate every drape with a commerce experience built like Siri Collections.",
+    heroEyebrow: "Handpicked Drapes and Occasion Dressing",
+    heroTitle: "A storefront built around collections, fresh arrivals, and the stories behind every weave.",
     heroCopy:
-      "Browse blouse stories first, discover upcoming categories as they launch, and move from cart to confirmed order with the live customer checkout flow.",
-    browseCategories: "Browse Categories",
-    exploreCategories: "Explore Categories",
-    browseByCategory: "Browse by Category",
-    allCollectionsStayVisible: "All Collections Stay Visible",
+      "Discover the newest pieces first, move through curated collections by category, and browse every parent collection as a complete merchandising destination instead of a dead-end menu item.",
+    browseCategories: "Browse Collections",
+    exploreCategories: "Explore Collections",
+    browseByCategory: "Browse by Collection",
+    allCollectionsStayVisible: "Collections Designed Around the Category Tree",
     categoryTreeCopy:
-      "Categories come from the active category tree. Launched collections open their live merchandise listings immediately, while unpublished launches can remain visible as coming-soon destinations.",
-    liveInventory: "Live Inventory",
-    featuredPicks: "Featured Picks",
-    youMayAlsoLike: "You May Also Like",
+      "Top-level collections stay visible as editorial entry points, while subcategories and descendant products keep each page useful even when parent categories have no direct products of their own.",
+    newArrivals: "New Arrivals",
+    newArrivalsTitle: "Freshly Added to the Storefront",
+    newArrivalsCopy:
+      "Newest active products across the live catalog, ordered by arrival time rather than by a fake merchandising category.",
+    featuredCollections: "Featured Collections",
+    featuredCollectionsTitle: "Shop the Collection",
+    featuredCollectionsCopy:
+      "Browse collection-led rails sourced from the category hierarchy and filled with descendant merchandise when a parent category is a container.",
     viewAll: "View All",
-    selectedCollection: "Selected Collection",
-    liveRailUnavailable:
-      "The live blouse rail is temporarily unavailable while the storefront backend recovers.",
-    liveRailComingSoonTitle: "The live blouse rail will appear here when merchandise is available.",
-    liveRailComingSoonCopy:
-      "If the primary live category has no products available yet, the storefront stays intact and waits for the catalog to go live.",
-    liveCategoryCopy: (label: string) =>
-      `Browse the live ${label.toLowerCase()} catalog with full listing and product detail support.`,
-    upcomingCategoryCopy:
-      "This category remains visible in the menu and opens a branded coming-soon page until merchandise is launched.",
+    browseCollection: (label: string) => `Browse ${label}`,
+    shopCollection: (label: string) => `Shop ${label}`,
+    categoryCardCopy:
+      "Open the parent collection, browse its subcategories, and shop whichever descendant products are already active.",
+    railUnavailable:
+      "This collection rail is temporarily unavailable while the storefront backend recovers.",
+    railComingSoonTitle: (label: string) => `${label} will appear here soon.`,
+    railComingSoonCopy:
+      "The collection remains visible even before products are populated, so the storefront never turns parent categories into dead ends.",
+    valuesEyebrow: "Why Siri Collections",
+    valuesTitle: "Curated for discovery, made for confident shopping.",
+    values: [
+      {
+        title: "Curated Collections",
+        copy: "Parent collections act as editorial spaces that guide shoppers into the right fabric, occasion, or silhouette.",
+      },
+      {
+        title: "Craft and Material Focus",
+        copy: "Category-first storytelling keeps handloom, embellishment, and finish details close to the shopping journey.",
+      },
+      {
+        title: "Artisan-Led Merchandising",
+        copy: "Collections can grow through descendant categories without needing artificial top-level placeholder products.",
+      },
+      {
+        title: "Seamless Browsing",
+        copy: "New arrivals, collection rails, PDP links, and category pages all stay connected through the same taxonomy.",
+      },
+    ],
   },
   category: {
     loading: "Loading category…",
     collection: "Collection",
+    subcategories: "Shop by Subcategory",
+    subcategoriesTitle: "Explore the Collection",
+    subcategoriesCopy:
+      "Browse into a focused subcategory or keep scrolling to shop the full collection across descendant categories.",
+    viewSubcategory: (label: string) => `View ${label}`,
     filters: "Filters",
     price: "Price",
     loadingMore: "Loading more products...",
-    noFilters: "No filters are configured for this live category yet.",
+    noFilters: "No filters are configured for this collection yet.",
     notFound: "Not Found",
     notFoundTitle: "This category does not exist.",
     notFoundCopy:
       "Choose another collection from the storefront menu. Category pages are generated from the active category tree.",
     comingSoon: "Coming Soon",
-    comingSoonTitle: (heading: string) => `${heading} is visible in categories and preparing to launch.`,
+    comingSoonTitle: (heading: string) => `${heading} is visible in collections and preparing to launch.`,
     comingSoonCopy:
-      "The category page is intentionally published before merchandise arrives. Live categories fetch products automatically once they are launched.",
+      "This collection exists in the storefront taxonomy before merchandise is ready. The page will automatically switch to a full listing as products arrive.",
     listingUnavailable:
-      "The live category listing is temporarily unavailable. Category routing is still working, but the catalog data could not be loaded.",
+      "The collection listing is temporarily unavailable. Category routing is still working, but the catalog data could not be loaded.",
     emptyListingTitle: (heading: string) => `${heading} will appear here soon.`,
     emptyListingCopy:
-      "This route is live. Once products are active in the catalog, this listing automatically switches from placeholder state to a full merchandise grid.",
+      "This collection route is already active. As soon as products are added anywhere inside this branch of the category tree, the page will switch to a full merchandise grid.",
     searchPlaceholder: (label: string) => `Search ${label.toLowerCase()}`,
     featuredPicks: "Featured Picks",
     youMayAlsoLike: "You May Also Like",
     backToHome: "Back to Home",
+  },
+  newArrivals: {
+    loading: "Loading new arrivals…",
+    title: "New Arrivals",
+    subtitle:
+      "The newest active products across the storefront, regardless of category. Use these cards to jump into product detail and back into the right collection.",
+    emptyTitle: "New arrivals will appear here soon.",
+    emptyCopy: "As new products are activated in the catalog, this page will automatically populate.",
+    browseCategory: (label: string) => `Browse ${label}`,
   },
   productCard: {
     emptyImage: "Coming Soon",

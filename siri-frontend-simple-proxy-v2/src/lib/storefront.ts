@@ -1,19 +1,8 @@
 import { StoreRequestError, type StoreCategoryNode } from "@/lib/storeApi";
 import type { UiNode } from "@/lib/types";
 
-export const PRIMARY_MERCH_CATEGORY_SLUG = "blouse";
-export const LIVE_CATEGORY_SLUGS = new Set(["blouse", "mangalsutra", "printed-sarees"]);
-
 export function normalizeCategorySlug(value: unknown) {
   return String(value || "").trim().toLowerCase();
-}
-
-export function isLiveCategorySlug(value: unknown) {
-  return LIVE_CATEGORY_SLUGS.has(normalizeCategorySlug(value));
-}
-
-export function isPrimaryMerchCategorySlug(value: unknown) {
-  return normalizeCategorySlug(value) === PRIMARY_MERCH_CATEGORY_SLUG;
 }
 
 function normalizePath(value: unknown) {
@@ -23,7 +12,7 @@ function normalizePath(value: unknown) {
   return withLeadingSlash.length > 1 ? withLeadingSlash.replace(/\/+$/, "") : withLeadingSlash;
 }
 
-function categoryHref(node: Pick<StoreCategoryNode, "path" | "slug">) {
+export function categoryHref(node: Pick<StoreCategoryNode, "path" | "slug">) {
   const raw = String(node.path || node.slug || "")
     .trim()
     .replace(/^\/+|\/+$/g, "");
@@ -48,21 +37,12 @@ export function findCategoryNodeBySlug(nodes: StoreCategoryNode[] = [], slug: st
   return flattenCategories(nodes, []).find((node) => normalizeCategorySlug(node.slug) === expectedSlug) || null;
 }
 
-export function findFirstLiveCategoryNode(nodes: StoreCategoryNode[] = []) {
-  return flattenCategories(nodes, []).find((node) => isLiveCategorySlug(node.slug)) || null;
-}
-
-export function findPrimaryMerchCategoryNode(nodes: StoreCategoryNode[] = []) {
-  return flattenCategories(nodes, []).find((node) => isPrimaryMerchCategorySlug(node.slug)) || null;
-}
-
 export function mapCategoryTree(tree: StoreCategoryNode[] = []): UiNode[] {
   return tree.map((node) => ({
     id: node._id,
     label: node.name,
     href: categoryHref(node),
     categorySlug: node.slug,
-    isLiveCategory: isLiveCategorySlug(node.slug),
     children: node.children?.length ? mapCategoryTree(node.children) : undefined,
   }));
 }

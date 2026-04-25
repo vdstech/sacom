@@ -1,5 +1,5 @@
-import Permission from "../auth/models/permissionModel.js";
-import Role from "../auth/models/roleModel.js";
+import Permission from "../admin-permissions/admin-permissions.model.js";
+import Role from "../admin-roles/admin-roles.model.js";
 
 async function upsertPermission(doc) {
   return Permission.findOneAndUpdate(

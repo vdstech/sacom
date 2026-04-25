@@ -150,6 +150,11 @@ function normalizeDiscountTypeFilter(value) {
   return ["none", "percent", "flat"].includes(type) ? type : "";
 }
 
+export function shouldIncludeDescendants(query = {}) {
+  const raw = normalizeString(query.includeDescendants).toLowerCase();
+  return raw === "true" || raw === "1" || raw === "yes";
+}
+
 export function buildCommercialFilters(query = {}) {
   const minPrice = normalizeQueryNumber(query.minPrice);
   const maxPrice = normalizeQueryNumber(query.maxPrice);
@@ -577,7 +582,7 @@ async function listProducts(query, { audience = "storefront" } = {}) {
   const categoryContext = await resolveCategoryContext(query);
   const facetFilters = collectFacetFilters(query);
   const commercialFilters = buildCommercialFilters(query);
-  const includeDescendants = audience === "admin";
+  const includeDescendants = audience === "admin" || shouldIncludeDescendants(query);
 
   if (query.isActive === "all") {
     // admin keeps all
@@ -745,9 +750,12 @@ export async function facets(req, res) {
       return res.json({ categoryId: "", categorySlug: "", priceRange: null, facets: [] });
     }
 
+    const includeDescendants = shouldIncludeDescendants(req.query);
+    const categoryIds = await loadCategoryFilterIds(categoryContext.categoryId, { includeDescendants });
+
     const products = await Product.find({
       isActive: true,
-      categoryId: new mongoose.Types.ObjectId(categoryContext.categoryId),
+      categoryId: categoryIds.length === 1 ? categoryIds[0] : { $in: categoryIds },
     })
       .select("categoryId details")
       .lean();

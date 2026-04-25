@@ -13,8 +13,8 @@ import {
   type StorePriceRange,
 } from "@/lib/storeApi";
 import {
+  categoryHref,
   findCategoryNodeByPath,
-  isLiveCategorySlug,
   normalizeCategorySlug,
   toTechnicalBannerMessage,
 } from "@/lib/storefront";
@@ -42,10 +42,11 @@ function buildProductQuery(
   categorySlug: string,
   activeFacetMap: Map<string, string[]>,
   searchParams: Pick<URLSearchParams, "get">,
-  options: { page?: number; limit?: number } = {}
+  options: { page?: number; limit?: number; includeDescendants?: boolean } = {}
 ) {
   const query = new URLSearchParams();
   query.set("categorySlug", categorySlug);
+  if (options.includeDescendants) query.set("includeDescendants", "true");
 
   for (const [key, values] of activeFacetMap.entries()) {
     if (values.length) query.set(`facet.${key}`, values.join(","));
@@ -167,21 +168,26 @@ export default function CategoryPage() {
         }
 
         setCategoryNode(matchedNode);
-        if (!isLiveCategorySlug(matchedNode.slug)) {
+        const listingSlug = normalizeCategorySlug(matchedNode.slug);
+        if (!listingSlug) {
           return;
         }
 
-        const liveSlug = normalizeCategorySlug(matchedNode.slug);
-        const listingQuery = buildProductQuery(liveSlug, activeFacetMap, searchParams, {
+        const listingQuery = buildProductQuery(listingSlug, activeFacetMap, searchParams, {
           page: 1,
           limit: PRODUCTS_PAGE_SIZE,
+          includeDescendants: true,
         });
-        const facetQuery = buildProductQuery(liveSlug, activeFacetMap, searchParams);
-        setCurrentListingSlug(liveSlug);
+        const facetQuery = buildProductQuery(listingSlug, activeFacetMap, searchParams, {
+          includeDescendants: true,
+        });
+        setCurrentListingSlug(listingSlug);
         const [listingResult, facetResult, featuredResult] = await Promise.allSettled([
           fetchStore<ProductListItem[]>(`/products?${listingQuery.toString()}`),
           fetchStore<{ facets?: CategoryFacet[]; priceRange?: StorePriceRange | null }>(`/products/facets?${facetQuery.toString()}`),
-          fetchStore<ProductListItem[]>(`/products?featured=true&categorySlug=${encodeURIComponent(liveSlug)}&limit=4`),
+          fetchStore<ProductListItem[]>(
+            `/products?featured=true&categorySlug=${encodeURIComponent(listingSlug)}&includeDescendants=true&limit=4`
+          ),
         ]);
 
         if (cancelled || listingContextRef.current !== listingContextKey) return;
@@ -244,6 +250,7 @@ export default function CategoryPage() {
         const nextQuery = buildProductQuery(currentListingSlug, activeFacetMap, searchParams, {
           page,
           limit: PRODUCTS_PAGE_SIZE,
+          includeDescendants: true,
         });
         const nextProducts = await fetchStore<ProductListItem[]>(`/products?${nextQuery.toString()}`);
         if (cancelled || listingContextRef.current !== listingContextKey) return;
@@ -363,7 +370,7 @@ export default function CategoryPage() {
   };
 
   const heading = categoryNode?.name || normalizeCategorySlug(slugParts[slugParts.length - 1]).replace(/[-_]/g, " ") || "Collection";
-  const isLiveCategory = isLiveCategorySlug(categoryNode?.slug);
+  const childCategories = categoryNode?.children || [];
   const priceSliderSpread = priceRange ? Math.max(priceRange.max - priceRange.min, 0) : 0;
   const priceSliderStep = priceRange
     ? priceSliderSpread <= 100
@@ -401,21 +408,35 @@ export default function CategoryPage() {
         </div>
       ) : null}
 
-      {!loading && categoryNode && !isLiveCategory ? (
-        <div className="coming-soon">
-          <div className="status-soon">{STOREFRONT_STRINGS.category.comingSoon}</div>
-          <h2 className="coming-soon__title">{STOREFRONT_STRINGS.category.comingSoonTitle(heading)}</h2>
-          <p className="coming-soon__copy">{STOREFRONT_STRINGS.category.comingSoonCopy}</p>
-        </div>
-      ) : null}
-
-      {!loading && categoryNode && isLiveCategory ? (
+      {!loading && categoryNode ? (
         catalogUnavailable ? (
           <div className="status-banner status-banner--error">
-            The live category listing is temporarily unavailable. Category routing is still working, but the catalog data could not be loaded.
+            {STOREFRONT_STRINGS.category.listingUnavailable}
           </div>
         ) : (
           <div className="listing-shell">
+            {childCategories.length ? (
+              <section className="subcategory-strip">
+                <div className="section-header">
+                  <div>
+                    <div className="section-kicker">{STOREFRONT_STRINGS.category.subcategories}</div>
+                    <h2 className="section-title">{STOREFRONT_STRINGS.category.subcategoriesTitle}</h2>
+                  </div>
+                  <p className="section-copy">{STOREFRONT_STRINGS.category.subcategoriesCopy}</p>
+                </div>
+                <div className="category-grid">
+                  {childCategories.map((node) => (
+                    <Link key={node._id} href={categoryHref(node)} className="category-card">
+                      <div className="category-card__meta">
+                        <span className="section-kicker">{node.slug || STOREFRONT_STRINGS.brand.fallbackCategorySlug}</span>
+                      </div>
+                      <div className="category-card__title">{node.name}</div>
+                      <p className="section-copy">{STOREFRONT_STRINGS.category.viewSubcategory(node.name)}</p>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ) : null}
             <div className="listing-layout">
               <aside className="filter-panel">
                 <div className="section-kicker">{STOREFRONT_STRINGS.category.filters}</div>
@@ -561,7 +582,7 @@ export default function CategoryPage() {
         )
       ) : null}
 
-      {!loading && categoryNode && isLiveCategory && featured.length ? (
+      {!loading && categoryNode && featured.length ? (
         <section className="section">
           <div className="section-header">
             <div>

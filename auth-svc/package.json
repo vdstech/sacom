@@ -9,7 +9,7 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed": "node src/seed/seed.js",
-    "test:orders": "node --test src/customer/orderShared.test.js src/customer/orderEligibility.test.js"
+    "test:orders": "node --test src/customer-orders/customer-orders.shared.test.js src/customer-orders/customer-orders.eligibility.test.js"
   },
   "keywords": [
     "auth"

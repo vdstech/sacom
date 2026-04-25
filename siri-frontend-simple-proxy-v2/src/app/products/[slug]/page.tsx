@@ -12,7 +12,6 @@ import { rememberProduct, getRecentlyViewed } from "@/lib/recentlyViewed";
 import { fetchCategoryTree, fetchStore, type ProductDetail, type ProductListItem, type ProductVariant } from "@/lib/storeApi";
 import {
   findCategoryNodeBySlug,
-  isLiveCategorySlug,
   isNotFoundError,
   normalizeCategorySlug,
   toTechnicalBannerMessage,
@@ -113,10 +112,10 @@ export default function ProductDetailPage() {
           }
         }
 
-        if (isLiveCategorySlug(payload.categorySlug)) {
+        if (payload.categorySlug) {
           const featuredResult = await Promise.allSettled([
             fetchStore<ProductListItem[]>(
-              `/products?featured=true&categorySlug=${encodeURIComponent(normalizeCategorySlug(payload.categorySlug))}&limit=4`
+              `/products?featured=true&categorySlug=${encodeURIComponent(normalizeCategorySlug(payload.categorySlug))}&includeDescendants=true&limit=4`
             ),
           ]);
           if (cancelled) return;

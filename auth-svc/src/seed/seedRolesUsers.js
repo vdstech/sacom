@@ -1,6 +1,6 @@
-import Permission from "../auth/models/permissionModel.js";
-import Role from "../auth/models/roleModel.js";
-import User from "../auth/models/userModel.js";
+import Permission from "../admin-permissions/admin-permissions.model.js";
+import Role from "../admin-roles/admin-roles.model.js";
+import User from "../admin-users/admin-users.model.js";
 import { hashPassword } from "../security/password.js";
 
 async function upsertRole(doc) {

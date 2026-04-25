@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
-import CustomerSession from "../customer/models/customerSessionModel.js";
-import Customer from "../customer/models/customerModel.js";
-import { getCustomerAccessTokenSecret } from "../customer/auth.shared.js";
+import CustomerSession from "../customer-auth/customer-auth.sessions.model.js";
+import Customer from "../customer-auth/customer-auth.model.js";
+import { getCustomerAccessTokenSecret } from "../customer-auth/customer-auth.shared.js";
 
 function misconfigured(res) {
   const payload = { error: "Server misconfigured" };

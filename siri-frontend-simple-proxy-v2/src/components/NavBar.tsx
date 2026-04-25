@@ -7,6 +7,7 @@ import { useAccount } from "@/components/AccountProvider";
 import { fetchCategoryTree } from "@/lib/storeApi";
 import type { UiNode } from "@/lib/types";
 import { mapCategoryTree, toErrorMessage } from "@/lib/storefront";
+import { STOREFRONT_STRINGS } from "@/lib/strings";
 import { useStoreCart } from "@/components/StoreProvider";
 
 function AccountIcon() {
@@ -136,7 +137,14 @@ export function NavBar() {
     };
   }, []);
 
-  const topLevel = useMemo(() => tree || [], [tree]);
+  const topLevel = useMemo<UiNode[]>(
+    () => ([
+      { id: "static-home", label: STOREFRONT_STRINGS.navigation.home, href: "/" },
+      { id: "static-new-arrivals", label: STOREFRONT_STRINGS.navigation.newArrivals, href: "/new-arrivals" },
+      ...(tree || []),
+    ]),
+    [tree]
+  );
   const openRoot = useMemo(
     () => topLevel.find((node) => node.id === openRootId && node.children?.length) || null,
     [openRootId, topLevel]

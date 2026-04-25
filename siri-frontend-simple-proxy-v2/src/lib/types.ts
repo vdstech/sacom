@@ -3,6 +3,5 @@ export type UiNode = {
   label: string;
   href: string;
   categorySlug?: string;
-  isLiveCategory?: boolean;
   children?: UiNode[];
 };

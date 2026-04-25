@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
-import Session from "../auth/models/sessionModel.js";
-import User from "../auth/models/userModel.js";
+import Session from "../admin-sessions/admin-sessions.model.js";
+import User from "../admin-users/admin-users.model.js";
 
 function misconfigured(res) {
   const isDev = process.env.NODE_ENV !== "production";

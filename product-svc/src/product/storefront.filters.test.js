@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildCommercialFilters,
   buildPriceRange,
+  shouldIncludeDescendants,
   variantMatchesCommercialFilters,
 } from "./product.controller.js";
 
@@ -55,4 +56,12 @@ test("variantMatchesCommercialFilters respects discount type and value bounds", 
     variantMatchesCommercialFilters({ price: 1000, discount: { type: "percent", value: 10 } }, filters),
     false
   );
+});
+
+test("shouldIncludeDescendants accepts the supported truthy query values", () => {
+  assert.equal(shouldIncludeDescendants({ includeDescendants: "true" }), true);
+  assert.equal(shouldIncludeDescendants({ includeDescendants: "1" }), true);
+  assert.equal(shouldIncludeDescendants({ includeDescendants: "yes" }), true);
+  assert.equal(shouldIncludeDescendants({ includeDescendants: "false" }), false);
+  assert.equal(shouldIncludeDescendants({}), false);
 });

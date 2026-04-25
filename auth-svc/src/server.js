@@ -8,19 +8,19 @@ import {getTlsOptions} from './tls.js'
 import https from 'https'
 import http from 'http'
 import cors from "cors";
-import rolesRouter from './auth/routes/roleRoute.js'
-import adminUsers from './auth/routes/adminRoute.js'
-import meRouter from './auth/routes/meRoute.js'
-import authRouter from './auth/routes/authRoute.js';
-import sessionRouter from './auth/routes/sessionRoute.js'
-import permissionRouter from './auth/routes/permissionsRoute.js'
-import customerAuthRouter from "./customer/routes/customerAuthRoute.js";
-import customerMeRouter from "./customer/routes/customerMeRoute.js";
-import customerAddressRouter from "./customer/routes/customerAddressRoute.js";
-import customerWishlistRouter from "./customer/routes/customerWishlistRoute.js";
-import customerOrderRouter from "./customer/routes/customerOrderRoute.js";
-import adminOrderRouter from "./customer/routes/adminOrderRoute.js";
-import { startOrderDeliveryWorker } from "./customer/orderDeliveryWorker.js";
+import rolesRouter from './admin-roles/admin-roles.routes.js'
+import adminUsers from './admin-users/admin-users.routes.js'
+import meRouter from './admin-auth/admin-auth.me.routes.js'
+import authRouter from './admin-auth/admin-auth.routes.js';
+import sessionRouter from './admin-sessions/admin-sessions.routes.js'
+import permissionRouter from './admin-permissions/admin-permissions.routes.js'
+import customerAuthRouter from "./customer-auth/customer-auth.routes.js";
+import customerMeRouter from "./customer-profile/customer-profile.routes.js";
+import customerAddressRouter from "./customer-addresses/customer-addresses.routes.js";
+import customerWishlistRouter from "./customer-wishlist/customer-wishlist.routes.js";
+import customerOrderRouter from "./customer-orders/customer-orders.routes.js";
+import adminOrderRouter from "./customer-orders/customer-orders.admin.routes.js";
+import { startOrderDeliveryWorker } from "./customer-orders/customer-orders.worker.js";
 import { validateRequiredEnv } from './config/validateRequiredEnv.js'
 
 const app = express()
