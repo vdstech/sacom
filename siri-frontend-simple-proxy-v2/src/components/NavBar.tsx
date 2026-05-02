@@ -11,6 +11,16 @@ import { mapCategoryTree, toErrorMessage } from "@/lib/storefront";
 import { STOREFRONT_STRINGS } from "@/lib/strings";
 import { useStoreCart } from "@/components/StoreProvider";
 
+function normalizeNavValue(value: string) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isStaticDuplicateNav(node: UiNode) {
+  const label = normalizeNavValue(node.label);
+  const href = normalizeNavValue(node.href);
+  return label === "home" || label === "new arrivals" || href === "/" || href === "/new-arrivals";
+}
+
 function AccountIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="header-icon-svg">
@@ -59,6 +69,21 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
+function InlineChevron({ expanded = false, className = "" }: { expanded?: boolean; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+      className={`${className} ${expanded ? "is-open" : ""}`.trim()}
+    >
+      <path
+        d="M6.47 7.97a.75.75 0 0 1 1.06 0L10 10.44l2.47-2.47a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 0-1.06Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function MenuColumn({
   nodes,
   activeId,
@@ -86,7 +111,7 @@ function MenuColumn({
                 className={`nav-column__link ${isActive ? "is-active" : ""}`}
               >
                 <span>{node.label}</span>
-                {hasChildren ? <span>›</span> : null}
+                {hasChildren ? <InlineChevron className="nav-column__chevron" /> : null}
               </Link>
             </li>
           );
@@ -149,22 +174,27 @@ function MobileMenuList({
         const expanded = expandedIds.includes(node.id);
         return (
           <li key={node.id} className="mobile-nav__item">
-            <div className="mobile-nav__row" style={{ paddingLeft: `${depth * 0.9}rem` }}>
-              <Link href={node.href || "#"} className="mobile-nav__link" onClick={onNavigate}>
-                <span>{node.label}</span>
-              </Link>
-              {hasChildren ? (
-                <button
-                  type="button"
-                  className="mobile-nav__toggle"
-                  aria-expanded={expanded}
-                  aria-label={`${expanded ? "Collapse" : "Expand"} ${node.label}`}
-                  onClick={() => onToggle(node.id)}
-                >
+            {hasChildren ? (
+              <button
+                type="button"
+                className="mobile-nav__row mobile-nav__row--button"
+                style={{ paddingLeft: `${depth * 0.9}rem` }}
+                aria-expanded={expanded}
+                aria-label={`${expanded ? "Collapse" : "Expand"} ${node.label}`}
+                onClick={() => onToggle(node.id)}
+              >
+                <span className="mobile-nav__link">
+                  <span>{node.label}</span>
                   <ChevronIcon expanded={expanded} />
-                </button>
-              ) : null}
-            </div>
+                </span>
+              </button>
+            ) : (
+              <div className="mobile-nav__row" style={{ paddingLeft: `${depth * 0.9}rem` }}>
+                <Link href={node.href || "#"} className="mobile-nav__link" onClick={onNavigate}>
+                  <span>{node.label}</span>
+                </Link>
+              </div>
+            )}
             {hasChildren && expanded ? (
               <MobileMenuList
                 nodes={node.children || []}
@@ -224,7 +254,7 @@ export function NavBar() {
     () => ([
       { id: "static-home", label: STOREFRONT_STRINGS.navigation.home, href: "/" },
       { id: "static-new-arrivals", label: STOREFRONT_STRINGS.navigation.newArrivals, href: "/new-arrivals" },
-      ...(tree || []),
+      ...((tree || []).filter((node) => !isStaticDuplicateNav(node))),
     ]),
     [tree]
   );

@@ -7,6 +7,7 @@ import { STOREFRONT_STRINGS } from "@/lib/strings";
 
 const NAV_ITEMS = [
   { href: "/account/orders", label: STOREFRONT_STRINGS.navigation.account.orders },
+  { href: "/account/coupons", label: STOREFRONT_STRINGS.navigation.account.coupons },
   { href: "/account/wishlist", label: STOREFRONT_STRINGS.navigation.account.wishlist },
   { href: "/account/addresses", label: STOREFRONT_STRINGS.navigation.account.savedAddresses },
 ];

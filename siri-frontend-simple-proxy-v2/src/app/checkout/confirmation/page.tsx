@@ -325,8 +325,9 @@ export default function CheckoutConfirmationPage() {
               <div className="section-kicker">{STOREFRONT_STRINGS.checkout.summaryTitle}</div>
               <div className="account-auth__field">
                 <span>{STOREFRONT_STRINGS.checkout.couponLabel}</span>
-                <div className="account-addresses__actions">
+                <div className="checkout-coupon__row">
                   <input
+                    className="checkout-coupon__input"
                     value={couponCode}
                     placeholder={STOREFRONT_STRINGS.checkout.couponPlaceholder}
                     onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
