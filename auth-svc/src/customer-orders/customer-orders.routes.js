@@ -8,6 +8,7 @@ router.post("/", requireCustomerAuth, controller.createOrder);
 router.post("/:id/cancel", requireCustomerAuth, controller.cancelOrder);
 router.post("/:id/items/:itemId/cancel", requireCustomerAuth, controller.cancelOrderItem);
 router.post("/:id/items/:itemId/return", requireCustomerAuth, controller.requestOrderItemReturn);
+router.post("/:id/items/:itemId/exchange", requireCustomerAuth, controller.requestOrderItemExchange);
 router.get("/", requireCustomerAuth, controller.listOrders);
 router.get("/:id", requireCustomerAuth, controller.getOrder);
 

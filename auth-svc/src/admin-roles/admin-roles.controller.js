@@ -1,4 +1,5 @@
 import Role from "./admin-roles.model.js";
+import { normalizeVisibleMenus } from "./admin-menu-catalog.js";
 
 function normalizeRoleName(name) {
   return String(name || "").trim().toUpperCase();
@@ -8,8 +9,17 @@ function isAdminRoleName(name) {
   return normalizeRoleName(name) === "ADMIN";
 }
 
+function mapRole(role) {
+  const doc = typeof role?.toObject === "function" ? role.toObject() : role;
+  return {
+    ...doc,
+    visibleMenusConfigured: !!doc?.visibleMenusConfigured,
+    visibleMenus: normalizeVisibleMenus(doc?.visibleMenus || []),
+  };
+}
+
 export const createRole = async (req, res) => {
-  const { name, permissions, description } = req.body;
+  const { name, permissions, description, visibleMenus, visibleMenusConfigured } = req.body;
 
   const roleName = normalizeRoleName(name);
   if (!roleName) {
@@ -34,18 +44,20 @@ export const createRole = async (req, res) => {
     name: roleName,
     permissions: Array.isArray(permissions) ? permissions : [],
     description: description || "",
+    visibleMenusConfigured: !!visibleMenusConfigured,
+    visibleMenus: visibleMenusConfigured ? normalizeVisibleMenus(visibleMenus) : [],
   });
 
-  return res.status(201).json(role);
+  return res.status(201).json(mapRole(role));
 };
 
 export const listRoles = async (req, res) => {
   const roles = await Role.find().sort({ name: 1 }).lean();
-  return res.json(roles);
+  return res.json(roles.map(mapRole));
 };
 
 export const updateRole = async (req, res) => {
-  const { name, permissions, description } = req.body;
+  const { name, permissions, description, visibleMenus, visibleMenusConfigured } = req.body;
   const id = req.params.id || req.body.id;
 
   if (!id) {
@@ -94,12 +106,28 @@ export const updateRole = async (req, res) => {
     role.permissions = permissions;
   }
 
+  if (visibleMenusConfigured !== undefined) {
+    role.visibleMenusConfigured = !!visibleMenusConfigured;
+    if (!role.visibleMenusConfigured) {
+      role.visibleMenus = [];
+    } else if (visibleMenus === undefined) {
+      role.visibleMenus = normalizeVisibleMenus(role.visibleMenus || []);
+    }
+  }
+
+  if (visibleMenus !== undefined) {
+    if (!Array.isArray(visibleMenus)) {
+      return res.status(400).json({ error: "visibleMenus must be an array" });
+    }
+    role.visibleMenus = role.visibleMenusConfigured ? normalizeVisibleMenus(visibleMenus) : [];
+  }
+
   if (description !== undefined) {
     role.description = description || "";
   }
 
   await role.save();
-  return res.json(role);
+  return res.json(mapRole(role));
 };
 
 export const deleteRole = async (req, res) => {

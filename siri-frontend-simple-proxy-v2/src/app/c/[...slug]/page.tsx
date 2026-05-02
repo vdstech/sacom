@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ProductCard } from "@/components/ProductCard";
 import {
-  CategoryFacet,
+  type CategoryFacet,
   fetchCategoryTree,
   fetchStore,
   type ProductListItem,
@@ -24,6 +24,14 @@ import { STOREFRONT_STRINGS } from "@/lib/strings";
 const PINNED_FACET_ORDER = ["work", "color", "size", "fabric"];
 const PRODUCTS_PAGE_SIZE = 12;
 
+type ActiveFilterChip = {
+  id: string;
+  label: string;
+  facetKey?: string;
+  facetValue?: string;
+  kind: "facet" | "price";
+};
+
 function normalizeFacetLabel(value: string) {
   return String(value || "").trim().toLowerCase();
 }
@@ -36,6 +44,10 @@ function readPositiveNumber(value: string | null) {
 
 function clampPrice(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function cloneFacetMap(source: Map<string, string[]>) {
+  return new Map(Array.from(source.entries()).map(([key, values]) => [key, [...values]]));
 }
 
 function buildProductQuery(
@@ -73,6 +85,163 @@ function SearchIcon() {
   );
 }
 
+function CategoryFilters({
+  orderedFacets,
+  selectedFacetMap,
+  priceRange,
+  selectedPriceRange,
+  facetSearch,
+  onFacetSearchChange,
+  onToggleFacet,
+  onToggleBooleanFacet,
+  onPriceChange,
+}: {
+  orderedFacets: CategoryFacet[];
+  selectedFacetMap: Map<string, string[]>;
+  priceRange: StorePriceRange | null;
+  selectedPriceRange: StorePriceRange | null;
+  facetSearch: Record<string, string>;
+  onFacetSearchChange: (facetKey: string, value: string) => void;
+  onToggleFacet: (facetKey: string, value: string) => void;
+  onToggleBooleanFacet: (facetKey: string, checked: boolean) => void;
+  onPriceChange: (range: StorePriceRange) => void;
+}) {
+  const priceSliderSpread = priceRange ? Math.max(priceRange.max - priceRange.min, 0) : 0;
+  const priceSliderStep = priceRange
+    ? priceSliderSpread <= 100
+      ? 1
+      : priceSliderSpread <= 1000
+        ? 10
+        : 50
+    : 1;
+  const selectedMin = selectedPriceRange?.min ?? priceRange?.min ?? 0;
+  const selectedMax = selectedPriceRange?.max ?? priceRange?.max ?? 0;
+  const minPercent =
+    priceRange && priceSliderSpread > 0 ? ((selectedMin - priceRange.min) / priceSliderSpread) * 100 : 0;
+  const maxPercent =
+    priceRange && priceSliderSpread > 0 ? ((selectedMax - priceRange.min) / priceSliderSpread) * 100 : 100;
+
+  return (
+    <div className="filters-grid">
+      {priceRange ? (
+        <div className="filter-group filter-group--price">
+          <div className="filter-group__header">
+            <h3>{STOREFRONT_STRINGS.category.price}</h3>
+          </div>
+          <div className="price-filter">
+            <div className="price-filter__values">
+              <strong>{formatMoney(selectedMin)}</strong>
+              <span>to</span>
+              <strong>{formatMoney(selectedMax)}</strong>
+            </div>
+            <div className="price-filter__slider">
+              <div className="price-filter__slider-base" />
+              <div
+                className="price-filter__slider-active"
+                style={{
+                  left: `${minPercent}%`,
+                  width: `${Math.max(maxPercent - minPercent, 0)}%`,
+                }}
+              />
+              <input
+                type="range"
+                min={priceRange.min}
+                max={priceRange.max}
+                step={priceSliderStep}
+                value={selectedMin}
+                aria-label="Minimum price"
+                onChange={(event) => {
+                  const nextMin = Math.min(Number(event.target.value), selectedMax);
+                  onPriceChange({ min: nextMin, max: Math.max(selectedMax, nextMin) });
+                }}
+              />
+              <input
+                type="range"
+                min={priceRange.min}
+                max={priceRange.max}
+                step={priceSliderStep}
+                value={selectedMax}
+                aria-label="Maximum price"
+                onChange={(event) => {
+                  const nextMax = Math.max(Number(event.target.value), selectedMin);
+                  onPriceChange({ min: Math.min(selectedMin, nextMax), max: nextMax });
+                }}
+              />
+            </div>
+            <div className="price-filter__bounds">
+              <span>{formatMoney(priceRange.min)}</span>
+              <span>{formatMoney(priceRange.max)}</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {orderedFacets.map((facet) => (
+        <div key={facet.key} className="filter-group">
+          <div className="filter-group__header">
+            <h3>{facet.label}</h3>
+            {facet.type === "boolean" ? null : (
+              <label className="filter-search">
+                <SearchIcon />
+                <input
+                  type="text"
+                  value={facetSearch[facet.key] || ""}
+                  onChange={(event) => onFacetSearchChange(facet.key, event.target.value)}
+                  placeholder={STOREFRONT_STRINGS.category.searchPlaceholder(facet.label)}
+                  aria-label={`Search ${facet.label}`}
+                />
+              </label>
+            )}
+          </div>
+
+          {facet.type === "boolean" ? (
+            <label className="filter-option">
+              <span className="filter-option__main">
+                <input
+                  type="checkbox"
+                  checked={(selectedFacetMap.get(facet.key) || []).includes("true")}
+                  onChange={(event) => onToggleBooleanFacet(facet.key, event.target.checked)}
+                />
+                <span>{facet.label}</span>
+              </span>
+              <strong>{facet.options[0]?.count || 0}</strong>
+            </label>
+          ) : (
+            <div className="filter-option-list">
+              {facet.options
+                .filter((option) => {
+                  const searchValue = String(facetSearch[facet.key] || "").trim().toLowerCase();
+                  if (!searchValue) return true;
+                  return option.label.toLowerCase().includes(searchValue);
+                })
+                .map((option) => {
+                  const active = (selectedFacetMap.get(facet.key) || []).includes(option.value);
+                  return (
+                    <label key={`${facet.key}-${option.value}`} className={`filter-option ${active ? "is-active" : ""}`}>
+                      <span className="filter-option__main">
+                        <input
+                          type="checkbox"
+                          checked={active}
+                          onChange={() => onToggleFacet(facet.key, option.value)}
+                        />
+                        <span>{option.label}</span>
+                      </span>
+                      <strong>{option.count}</strong>
+                    </label>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {!orderedFacets.length && !priceRange ? (
+        <div className="section-copy">{STOREFRONT_STRINGS.category.noFilters}</div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function CategoryPage() {
   const params = useParams<{ slug?: string[] }>();
   const router = useRouter();
@@ -94,7 +263,12 @@ export default function CategoryPage() {
   const [page, setPage] = useState(1);
   const [technicalError, setTechnicalError] = useState("");
   const [facetSearch, setFacetSearch] = useState<Record<string, string>>({});
+  const [mobileFacetSearch, setMobileFacetSearch] = useState<Record<string, string>>({});
   const [currentListingSlug, setCurrentListingSlug] = useState("");
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [draftFacetMap, setDraftFacetMap] = useState<Map<string, string[]>>(new Map());
+  const [draftPriceRange, setDraftPriceRange] = useState<StorePriceRange | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const listingContextRef = useRef("");
   const loadingMoreRef = useRef(false);
@@ -127,6 +301,41 @@ export default function CategoryPage() {
     return [...pinned, ...remaining];
   }, [facets]);
 
+  const activeFilterChips = useMemo(() => {
+    const chips: ActiveFilterChip[] = [];
+
+    for (const [facetKey, values] of activeFacetMap.entries()) {
+      const facet = facets.find((entry) => entry.key === facetKey);
+      for (const value of values) {
+        const optionLabel =
+          facet?.type === "boolean"
+            ? facet.label
+            : facet?.options.find((option) => option.value === value)?.label || value;
+        chips.push({
+          id: `${facetKey}-${value}`,
+          label: `${facet?.label || facetKey}: ${optionLabel}`,
+          facetKey,
+          facetValue: value,
+          kind: "facet",
+        });
+      }
+    }
+
+    const minPrice = readPositiveNumber(searchParams.get("minPrice"));
+    const maxPrice = readPositiveNumber(searchParams.get("maxPrice"));
+    if (priceRange && (minPrice !== null || maxPrice !== null)) {
+      chips.push({
+        id: "price-range",
+        label: `${STOREFRONT_STRINGS.category.price}: ${formatMoney(minPrice ?? priceRange.min)} - ${formatMoney(maxPrice ?? priceRange.max)}`,
+        kind: "price",
+      });
+    }
+
+    return chips;
+  }, [activeFacetMap, facets, priceRange, searchParams]);
+
+  const activeFilterCount = activeFilterChips.length;
+
   useEffect(() => {
     loadingMoreRef.current = loadingMore;
   }, [loadingMore]);
@@ -134,6 +343,34 @@ export default function CategoryPage() {
   useEffect(() => {
     hasMoreProductsRef.current = hasMoreProducts;
   }, [hasMoreProducts]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia("(max-width: 1100px)");
+    const updateViewport = () => setIsMobileLayout(mediaQuery.matches);
+    updateViewport();
+    mediaQuery.addEventListener("change", updateViewport);
+    return () => mediaQuery.removeEventListener("change", updateViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileLayout) setMobileFiltersOpen(false);
+  }, [isMobileLayout]);
+
+  useEffect(() => {
+    if (!mobileFiltersOpen) return;
+    setDraftFacetMap(cloneFacetMap(activeFacetMap));
+    setDraftPriceRange(
+      selectedPriceRange
+        ? { ...selectedPriceRange }
+        : priceRange
+          ? { ...priceRange }
+          : null
+    );
+    setMobileFacetSearch({});
+    document.body.classList.add("body-scroll-lock");
+    return () => document.body.classList.remove("body-scroll-lock");
+  }, [mobileFiltersOpen, priceRange?.max, priceRange?.min, searchKey, selectedPriceRange?.max, selectedPriceRange?.min]);
 
   useEffect(() => {
     if (!slugParts.length) return;
@@ -169,9 +406,7 @@ export default function CategoryPage() {
 
         setCategoryNode(matchedNode);
         const listingSlug = normalizeCategorySlug(matchedNode.slug);
-        if (!listingSlug) {
-          return;
-        }
+        if (!listingSlug) return;
 
         const listingQuery = buildProductQuery(listingSlug, activeFacetMap, searchParams, {
           page: 1,
@@ -182,6 +417,7 @@ export default function CategoryPage() {
           includeDescendants: true,
         });
         setCurrentListingSlug(listingSlug);
+
         const [listingResult, facetResult, featuredResult] = await Promise.allSettled([
           fetchStore<ProductListItem[]>(`/products?${listingQuery.toString()}`),
           fetchStore<{ facets?: CategoryFacet[]; priceRange?: StorePriceRange | null }>(`/products/facets?${facetQuery.toString()}`),
@@ -191,9 +427,7 @@ export default function CategoryPage() {
         ]);
 
         if (cancelled || listingContextRef.current !== listingContextKey) return;
-        if (listingResult.status === "rejected") {
-          throw listingResult.reason;
-        }
+        if (listingResult.status === "rejected") throw listingResult.reason;
 
         const initialProducts = listingResult.value || [];
         setProducts(initialProducts);
@@ -219,7 +453,9 @@ export default function CategoryPage() {
         const optionalFailure =
           facetResult.status === "rejected"
             ? facetResult.reason
-            : (featuredResult.status === "rejected" ? featuredResult.reason : null);
+            : featuredResult.status === "rejected"
+              ? featuredResult.reason
+              : null;
         setTechnicalError(optionalFailure ? toTechnicalBannerMessage(optionalFailure) : "");
       } catch (error) {
         if (cancelled || listingContextRef.current !== listingContextKey) return;
@@ -228,9 +464,7 @@ export default function CategoryPage() {
         setHasMoreProducts(false);
         setTechnicalError(toTechnicalBannerMessage(error));
       } finally {
-        if (!cancelled && listingContextRef.current === listingContextKey) {
-          setLoading(false);
-        }
+        if (!cancelled && listingContextRef.current === listingContextKey) setLoading(false);
       }
     }
 
@@ -266,9 +500,7 @@ export default function CategoryPage() {
         setTechnicalError(toTechnicalBannerMessage(error));
       } finally {
         loadingMoreRef.current = false;
-        if (!cancelled && listingContextRef.current === listingContextKey) {
-          setLoadingMore(false);
-        }
+        if (!cancelled && listingContextRef.current === listingContextKey) setLoadingMore(false);
       }
     }
 
@@ -320,7 +552,7 @@ export default function CategoryPage() {
   }, [priceRange, searchKey, searchParams]);
 
   useEffect(() => {
-    if (!priceRange || !selectedPriceRange) return;
+    if (!priceRange || !selectedPriceRange || isMobileLayout) return;
 
     const currentMin = clampPrice(
       readPositiveNumber(searchParams.get("minPrice")) ?? priceRange.min,
@@ -350,43 +582,102 @@ export default function CategoryPage() {
     }, 180);
 
     return () => window.clearTimeout(timer);
-  }, [priceRange, routePath, router, searchParams, selectedPriceRange]);
+  }, [isMobileLayout, priceRange, routePath, router, searchParams, selectedPriceRange]);
 
-  const toggleFacet = (facetKey: string, optionValue: string) => {
+  const applyFiltersToRoute = (facetMap: Map<string, string[]>, nextPriceSelection: StorePriceRange | null) => {
     const next = new URLSearchParams(searchParams.toString());
-    const current = new Set((activeFacetMap.get(facetKey) || []).map((value) => String(value)));
+    const keysToClear = Array.from(next.keys()).filter((key) => key.startsWith("facet."));
+    for (const key of keysToClear) next.delete(key);
+    next.delete("minPrice");
+    next.delete("maxPrice");
+
+    for (const [key, values] of facetMap.entries()) {
+      if (values.length) next.set(`facet.${key}`, values.join(","));
+    }
+
+    if (priceRange && nextPriceSelection) {
+      const nextMin = clampPrice(nextPriceSelection.min, priceRange.min, priceRange.max);
+      const nextMax = clampPrice(nextPriceSelection.max, priceRange.min, priceRange.max);
+      if (nextMin > priceRange.min) next.set("minPrice", String(nextMin));
+      if (nextMax < priceRange.max) next.set("maxPrice", String(nextMax));
+    }
+
+    const nextQuery = next.toString();
+    router.push(nextQuery ? `${routePath}?${nextQuery}` : routePath);
+  };
+
+  const toggleFacetImmediate = (facetKey: string, optionValue: string) => {
+    const nextFacetMap = cloneFacetMap(activeFacetMap);
+    const current = new Set((nextFacetMap.get(facetKey) || []).map((value) => String(value)));
     if (current.has(optionValue)) current.delete(optionValue);
     else current.add(optionValue);
-    if (current.size) next.set(`facet.${facetKey}`, Array.from(current).join(","));
-    else next.delete(`facet.${facetKey}`);
-    router.push(`${routePath}?${next.toString()}`);
+    if (current.size) nextFacetMap.set(facetKey, Array.from(current));
+    else nextFacetMap.delete(facetKey);
+    applyFiltersToRoute(nextFacetMap, selectedPriceRange);
   };
 
-  const toggleBooleanFacet = (facetKey: string, checked: boolean) => {
-    const next = new URLSearchParams(searchParams.toString());
-    if (checked) next.set(`facet.${facetKey}`, "true");
-    else next.delete(`facet.${facetKey}`);
-    router.push(`${routePath}?${next.toString()}`);
+  const toggleBooleanFacetImmediate = (facetKey: string, checked: boolean) => {
+    const nextFacetMap = cloneFacetMap(activeFacetMap);
+    if (checked) nextFacetMap.set(facetKey, ["true"]);
+    else nextFacetMap.delete(facetKey);
+    applyFiltersToRoute(nextFacetMap, selectedPriceRange);
   };
 
-  const heading = categoryNode?.name || normalizeCategorySlug(slugParts[slugParts.length - 1]).replace(/[-_]/g, " ") || "Collection";
+  const toggleFacetDraft = (facetKey: string, optionValue: string) => {
+    setDraftFacetMap((current) => {
+      const nextFacetMap = cloneFacetMap(current);
+      const values = new Set(nextFacetMap.get(facetKey) || []);
+      if (values.has(optionValue)) values.delete(optionValue);
+      else values.add(optionValue);
+      if (values.size) nextFacetMap.set(facetKey, Array.from(values));
+      else nextFacetMap.delete(facetKey);
+      return nextFacetMap;
+    });
+  };
+
+  const toggleBooleanFacetDraft = (facetKey: string, checked: boolean) => {
+    setDraftFacetMap((current) => {
+      const nextFacetMap = cloneFacetMap(current);
+      if (checked) nextFacetMap.set(facetKey, ["true"]);
+      else nextFacetMap.delete(facetKey);
+      return nextFacetMap;
+    });
+  };
+
+  const clearAppliedFilters = () => {
+    applyFiltersToRoute(new Map(), priceRange);
+  };
+
+  const clearDraftFilters = () => {
+    setDraftFacetMap(new Map());
+    setDraftPriceRange(priceRange ? { ...priceRange } : null);
+    setMobileFacetSearch({});
+  };
+
+  const applyDraftFilters = () => {
+    applyFiltersToRoute(draftFacetMap, draftPriceRange);
+    setMobileFiltersOpen(false);
+  };
+
+  const removeFilterChip = (chip: ActiveFilterChip) => {
+    if (chip.kind === "price") {
+      applyFiltersToRoute(activeFacetMap, priceRange);
+      return;
+    }
+
+    if (!chip.facetKey || !chip.facetValue) return;
+    const nextFacetMap = cloneFacetMap(activeFacetMap);
+    const values = (nextFacetMap.get(chip.facetKey) || []).filter((value) => value !== chip.facetValue);
+    if (values.length) nextFacetMap.set(chip.facetKey, values);
+    else nextFacetMap.delete(chip.facetKey);
+    applyFiltersToRoute(nextFacetMap, selectedPriceRange);
+  };
+
+  const heading =
+    categoryNode?.name ||
+    normalizeCategorySlug(slugParts[slugParts.length - 1]).replace(/[-_]/g, " ") ||
+    "Collection";
   const childCategories = categoryNode?.children || [];
-  const priceSliderSpread = priceRange ? Math.max(priceRange.max - priceRange.min, 0) : 0;
-  const priceSliderStep = priceRange
-    ? priceSliderSpread <= 100
-      ? 1
-      : priceSliderSpread <= 1000
-        ? 10
-        : 50
-    : 1;
-  const selectedMin = selectedPriceRange?.min ?? priceRange?.min ?? 0;
-  const selectedMax = selectedPriceRange?.max ?? priceRange?.max ?? 0;
-  const minPercent = priceRange && priceSliderSpread > 0
-    ? ((selectedMin - priceRange.min) / priceSliderSpread) * 100
-    : 0;
-  const maxPercent = priceRange && priceSliderSpread > 0
-    ? ((selectedMax - priceRange.min) / priceSliderSpread) * 100
-    : 100;
 
   return (
     <div className="section">
@@ -437,138 +728,69 @@ export default function CategoryPage() {
                 </div>
               </section>
             ) : null}
+
             <div className="listing-layout">
-              <aside className="filter-panel">
+              <aside className="filter-panel filter-panel--desktop">
                 <div className="section-kicker">{STOREFRONT_STRINGS.category.filters}</div>
-                <div className="filters-grid">
-                  {priceRange ? (
-                    <div className="filter-group filter-group--price">
-                      <div className="filter-group__header">
-                        <h3>{STOREFRONT_STRINGS.category.price}</h3>
-                      </div>
-                      <div className="price-filter">
-                        <div className="price-filter__values">
-                          <strong>{formatMoney(selectedMin)}</strong>
-                          <span>to</span>
-                          <strong>{formatMoney(selectedMax)}</strong>
-                        </div>
-                        <div className="price-filter__slider">
-                          <div className="price-filter__slider-base" />
-                          <div
-                            className="price-filter__slider-active"
-                            style={{
-                              left: `${minPercent}%`,
-                              width: `${Math.max(maxPercent - minPercent, 0)}%`,
-                            }}
-                          />
-                          <input
-                            type="range"
-                            min={priceRange.min}
-                            max={priceRange.max}
-                            step={priceSliderStep}
-                            value={selectedMin}
-                            aria-label="Minimum price"
-                            onChange={(event) => {
-                              const nextMin = Math.min(Number(event.target.value), selectedMax);
-                              setSelectedPriceRange({ min: nextMin, max: Math.max(selectedMax, nextMin) });
-                            }}
-                          />
-                          <input
-                            type="range"
-                            min={priceRange.min}
-                            max={priceRange.max}
-                            step={priceSliderStep}
-                            value={selectedMax}
-                            aria-label="Maximum price"
-                            onChange={(event) => {
-                              const nextMax = Math.max(Number(event.target.value), selectedMin);
-                              setSelectedPriceRange({ min: Math.min(selectedMin, nextMax), max: nextMax });
-                            }}
-                          />
-                        </div>
-                        <div className="price-filter__bounds">
-                          <span>{formatMoney(priceRange.min)}</span>
-                          <span>{formatMoney(priceRange.max)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                  {orderedFacets.map((facet) => (
-                    <div key={facet.key} className="filter-group">
-                      <div className="filter-group__header">
-                        <h3>{facet.label}</h3>
-                        {facet.type === "boolean" ? null : (
-                          <label className="filter-search">
-                            <SearchIcon />
-                            <input
-                              type="text"
-                              value={facetSearch[facet.key] || ""}
-                              onChange={(event) => {
-                                const value = event.target.value;
-                                setFacetSearch((current) => ({ ...current, [facet.key]: value }));
-                              }}
-                              placeholder={STOREFRONT_STRINGS.category.searchPlaceholder(facet.label)}
-                              aria-label={`Search ${facet.label}`}
-                            />
-                          </label>
-                        )}
-                      </div>
-                      {facet.type === "boolean" ? (
-                        <label className="filter-option">
-                          <span className="filter-option__main">
-                            <input
-                              type="checkbox"
-                              checked={(activeFacetMap.get(facet.key) || []).includes("true")}
-                              onChange={(event) => toggleBooleanFacet(facet.key, event.target.checked)}
-                            />
-                            <span>{facet.label}</span>
-                          </span>
-                          <strong>{facet.options[0]?.count || 0}</strong>
-                        </label>
-                      ) : (
-                        <div className="filter-option-list">
-                          {facet.options
-                            .filter((option) => {
-                              const searchValue = String(facetSearch[facet.key] || "").trim().toLowerCase();
-                              if (!searchValue) return true;
-                              return option.label.toLowerCase().includes(searchValue);
-                            })
-                            .map((option) => {
-                            const active = (activeFacetMap.get(facet.key) || []).includes(option.value);
-                            return (
-                              <label
-                                key={`${facet.key}-${option.value}`}
-                                className={`filter-option ${active ? "is-active" : ""}`}
-                              >
-                                <span className="filter-option__main">
-                                  <input
-                                    type="checkbox"
-                                    checked={active}
-                                    onChange={() => toggleFacet(facet.key, option.value)}
-                                  />
-                                  <span>{option.label}</span>
-                                </span>
-                                <strong>{option.count}</strong>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {!facets.length ? <div className="section-copy">{STOREFRONT_STRINGS.category.noFilters}</div> : null}
-                </div>
+                <CategoryFilters
+                  orderedFacets={orderedFacets}
+                  selectedFacetMap={activeFacetMap}
+                  priceRange={priceRange}
+                  selectedPriceRange={selectedPriceRange}
+                  facetSearch={facetSearch}
+                  onFacetSearchChange={(facetKey, value) =>
+                    setFacetSearch((current) => ({ ...current, [facetKey]: value }))
+                  }
+                  onToggleFacet={toggleFacetImmediate}
+                  onToggleBooleanFacet={toggleBooleanFacetImmediate}
+                  onPriceChange={(range) => setSelectedPriceRange(range)}
+                />
               </aside>
 
-              <div>
+              <div className="listing-results">
+                <div className="listing-toolbar">
+                  <div className="listing-toolbar__meta">
+                    <span className="section-copy">{STOREFRONT_STRINGS.category.resultsCount(products.length)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="filter-chip filter-chip--trigger"
+                    onClick={() => setMobileFiltersOpen(true)}
+                  >
+                    {STOREFRONT_STRINGS.category.filterButton(activeFilterCount)}
+                  </button>
+                </div>
+
+                {activeFilterCount ? (
+                  <div className="active-filters">
+                    <span className="section-kicker">{STOREFRONT_STRINGS.category.activeFilters}</span>
+                    <div className="active-filters__chips">
+                      {activeFilterChips.map((chip) => (
+                        <button
+                          key={chip.id}
+                          type="button"
+                          className="filter-chip active-filters__chip"
+                          onClick={() => removeFilterChip(chip)}
+                        >
+                          <span>{chip.label}</span>
+                          <span className="filter-chip__remove" aria-hidden="true">×</span>
+                        </button>
+                      ))}
+                      <button type="button" className="filter-chip filter-chip--clear" onClick={clearAppliedFilters}>
+                        {STOREFRONT_STRINGS.category.clearFilters}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
                 {products.length ? (
-                  <div className="listing-results">
+                  <>
                     <div className="card-grid">
                       {products.map((product) => <ProductCard key={product._id} product={product} />)}
                     </div>
                     {hasMoreProducts ? <div ref={loadMoreTriggerRef} className="listing-sentinel" aria-hidden="true" /> : null}
                     {loadingMore ? <div className="section-copy listing-status">{STOREFRONT_STRINGS.category.loadingMore}</div> : null}
-                  </div>
+                  </>
                 ) : (
                   <div className="coming-soon">
                     <div className="status-soon">{STOREFRONT_STRINGS.category.comingSoon}</div>
@@ -581,6 +803,46 @@ export default function CategoryPage() {
           </div>
         )
       ) : null}
+
+      <div
+        className={`filter-sheet-backdrop ${mobileFiltersOpen ? "is-open" : ""}`}
+        aria-hidden={!mobileFiltersOpen}
+        onClick={() => setMobileFiltersOpen(false)}
+      />
+      <aside className={`filter-sheet ${mobileFiltersOpen ? "is-open" : ""}`} aria-hidden={!mobileFiltersOpen}>
+        <div className="filter-sheet__header">
+          <div>
+            <div className="section-kicker">{STOREFRONT_STRINGS.category.filters}</div>
+            <h2>{STOREFRONT_STRINGS.category.filterSheetTitle}</h2>
+          </div>
+          <button type="button" className="mobile-nav__close" onClick={() => setMobileFiltersOpen(false)}>
+            {STOREFRONT_STRINGS.category.closeFilters}
+          </button>
+        </div>
+        <div className="filter-sheet__body">
+          <CategoryFilters
+            orderedFacets={orderedFacets}
+            selectedFacetMap={draftFacetMap}
+            priceRange={priceRange}
+            selectedPriceRange={draftPriceRange}
+            facetSearch={mobileFacetSearch}
+            onFacetSearchChange={(facetKey, value) =>
+              setMobileFacetSearch((current) => ({ ...current, [facetKey]: value }))
+            }
+            onToggleFacet={toggleFacetDraft}
+            onToggleBooleanFacet={toggleBooleanFacetDraft}
+            onPriceChange={(range) => setDraftPriceRange(range)}
+          />
+        </div>
+        <div className="filter-sheet__footer">
+          <button type="button" className="secondary-button" onClick={clearDraftFilters}>
+            {STOREFRONT_STRINGS.category.clearFilters}
+          </button>
+          <button type="button" className="primary-button" onClick={applyDraftFilters}>
+            {STOREFRONT_STRINGS.category.applyFilters}
+          </button>
+        </div>
+      </aside>
 
       {!loading && categoryNode && featured.length ? (
         <section className="section">

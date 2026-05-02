@@ -118,7 +118,7 @@ export default function OrdersMetricsPage() {
   ] : [];
 
   return (
-    <ProtectedPage anyOf={["order:read", "order:write"]}>
+    <ProtectedPage anyOf={["order:read", "order:admin", "order:processing", "order:packaging", "order:shipping", "order:cancellation"]}>
       <section className="card row" style={{ justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div>
           <div className="orders-detail__eyebrow">{ADMIN_UI_STRINGS.orders.metricsTitle}</div>

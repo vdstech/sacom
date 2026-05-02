@@ -7,6 +7,10 @@ const StorefrontInventoryReadSchema = new mongoose.Schema(
     variantId: { type: mongoose.Schema.Types.ObjectId, default: null },
     sizeLabel: { type: String, default: "", trim: true },
     quantity: { type: Number, default: 0, min: 0 },
+    availableQty: { type: Number, default: 0, min: 0 },
+    reservedQty: { type: Number, default: 0, min: 0 },
+    damagedQty: { type: Number, default: 0, min: 0 },
+    lostQty: { type: Number, default: 0, min: 0 },
     reorderLevel: { type: Number, default: 0, min: 0 },
   },
   {

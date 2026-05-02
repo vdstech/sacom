@@ -15,14 +15,14 @@ const MAX_CATEGORY_RAIL_CANDIDATES = 6;
 type CategorySpotlight = {
   label: string;
   href: string;
-  categorySlug?: string;
+  categorySlug: string | undefined;
   childCount: number;
 };
 
 type CategoryRail = {
   label: string;
   href: string;
-  categorySlug?: string;
+  categorySlug: string | undefined;
   products: ProductListItem[];
 };
 

@@ -39,7 +39,7 @@ const ADDRESS_FIELDS = [
 
 export default function CheckoutConfirmationPage() {
   const router = useRouter();
-  const { ready, customer, accessToken } = useAccount();
+  const { ready, customer, loading: accountLoading, accessToken } = useAccount();
   const { cart, loading: cartLoading, error: cartError, refreshCart, setOpen } = useStoreCart();
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState("");
@@ -84,6 +84,8 @@ export default function CheckoutConfirmationPage() {
   }, [ready, customer, accessToken, router]);
 
   const hasCartItems = !!(cart?.items || []).length;
+  const authPending = !ready || accountLoading;
+  const isRedirectingToAuth = ready && !customer;
   const payLabel = useMemo(
     () => STOREFRONT_STRINGS.checkout.payButton(formatMoney(Number(cart?.subtotal || 0))),
     [cart?.subtotal]
@@ -150,9 +152,9 @@ export default function CheckoutConfirmationPage() {
         {cartError ? <div className="status-banner status-banner--error">{cartError}</div> : null}
         {statusMessage ? <div className={`status-banner ${statusTone === "error" ? "status-banner--error" : ""}`}>{statusMessage}</div> : null}
 
-        {cartLoading || loadingAddresses ? <div className="section-copy">{STOREFRONT_STRINGS.product.loading}</div> : null}
+        {authPending || cartLoading || loadingAddresses ? <div className="section-copy">{STOREFRONT_STRINGS.product.loading}</div> : null}
 
-        {!cartLoading && !hasCartItems ? (
+        {!authPending && !isRedirectingToAuth && !cartLoading && !hasCartItems ? (
           <div className="coming-soon">
             <h2 className="coming-soon__title">{STOREFRONT_STRINGS.checkout.emptyTitle}</h2>
             <p className="coming-soon__copy">{STOREFRONT_STRINGS.checkout.emptyCopy}</p>
@@ -160,7 +162,7 @@ export default function CheckoutConfirmationPage() {
           </div>
         ) : null}
 
-        {!cartLoading && hasCartItems ? (
+        {!authPending && !isRedirectingToAuth && !cartLoading && hasCartItems ? (
           <div className="checkout-layout">
             <div className="checkout-addresses">
               <div className="section-kicker">{STOREFRONT_STRINGS.checkout.addressSection}</div>

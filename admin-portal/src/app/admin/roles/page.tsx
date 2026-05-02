@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ProtectedPage } from "@/components/ProtectedPage";
 import { DataTable } from "@/components/DataTable";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
+import { MENU_ITEMS } from "@/lib/permissions";
 
 type RoleDoc = {
   _id: string;
@@ -12,15 +13,34 @@ type RoleDoc = {
   description: string;
   isSystemRole: boolean;
   permissions: string[];
+  visibleMenusConfigured: boolean;
+  visibleMenus: string[];
 };
 
 type PermissionDoc = { _id: string; code: string };
+type RoleFormState = {
+  name: string;
+  description: string;
+  permissions: string[];
+  visibleMenusConfigured: boolean;
+  visibleMenus: string[];
+};
+
+const EMPTY_FORM: RoleFormState = {
+  name: "",
+  description: "",
+  permissions: [],
+  visibleMenusConfigured: false,
+  visibleMenus: [],
+};
 
 export default function RolesPage() {
   const { accessToken, refreshAccessToken } = useAuth();
   const [roles, setRoles] = useState<RoleDoc[]>([]);
   const [permissions, setPermissions] = useState<PermissionDoc[]>([]);
   const [error, setError] = useState("");
+  const [editingRoleId, setEditingRoleId] = useState("");
+  const [formState, setFormState] = useState<RoleFormState>(EMPTY_FORM);
 
   const load = async () => {
     try {
@@ -46,22 +66,34 @@ export default function RolesPage() {
 
   useEffect(() => { load(); }, []);
 
-  const createRole = async (e: FormEvent<HTMLFormElement>) => {
+  const editingRole = useMemo(
+    () => roles.find((role) => role._id === editingRoleId) || null,
+    [roles, editingRoleId]
+  );
+
+  const resetForm = () => {
+    setEditingRoleId("");
+    setFormState(EMPTY_FORM);
+  };
+
+  const saveRole = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
     try {
-      await apiRequest("/api/admin/roles", {
+      const path = editingRoleId ? `/api/admin/roles/${editingRoleId}` : "/api/admin/roles";
+      await apiRequest(path, {
         service: "auth",
-        method: "POST",
+        method: editingRoleId ? "PUT" : "POST",
         token: accessToken,
         onUnauthorized: refreshAccessToken,
         body: {
-          name: String(form.get("name") || ""),
-          description: String(form.get("description") || ""),
-          permissions: form.getAll("permissions").map(String),
+          name: formState.name,
+          description: formState.description,
+          permissions: formState.permissions,
+          visibleMenusConfigured: formState.visibleMenusConfigured,
+          visibleMenus: formState.visibleMenusConfigured ? formState.visibleMenus : [],
         },
       });
-      (e.currentTarget as HTMLFormElement).reset();
+      resetForm();
       load();
     } catch (err) {
       setError((err as Error).message);
@@ -72,39 +104,95 @@ export default function RolesPage() {
     <ProtectedPage anyOf={["role:read", "role:create", "role:update", "role:delete"]}>
       <section className="card">
         <h1>Roles</h1>
-        <form onSubmit={createRole} className="row" style={{ alignItems: "end" }}>
-          <label style={{ flex: 1 }}>Name<input name="name" required /></label>
-          <label style={{ flex: 1 }}>Description<input name="description" /></label>
-          <label style={{ flex: 1 }}>Permissions
-            <select name="permissions" multiple required size={4}>
+        <form onSubmit={saveRole} className="row" style={{ alignItems: "end" }}>
+          <label style={{ flex: 1 }}>
+            Name
+            <input
+              name="name"
+              required
+              value={formState.name}
+              onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))}
+            />
+          </label>
+          <label style={{ flex: 1 }}>
+            Description
+            <input
+              name="description"
+              value={formState.description}
+              onChange={(event) => setFormState((current) => ({ ...current, description: event.target.value }))}
+            />
+          </label>
+          <label style={{ flex: 1 }}>
+            Permissions
+            <select
+              name="permissions"
+              multiple
+              required
+              size={6}
+              value={formState.permissions}
+              onChange={(event) => setFormState((current) => ({
+                ...current,
+                permissions: Array.from(event.target.selectedOptions, (option) => option.value),
+              }))}
+            >
               {permissions.map((p) => <option key={p._id} value={p._id}>{p.code}</option>)}
             </select>
           </label>
-          <button>Create</button>
+          <label style={{ flex: 1 }}>
+            Limit Visible Menus
+            <input
+              type="checkbox"
+              checked={formState.visibleMenusConfigured}
+              onChange={(event) => setFormState((current) => ({
+                ...current,
+                visibleMenusConfigured: event.target.checked,
+                visibleMenus: event.target.checked ? current.visibleMenus : [],
+              }))}
+            />
+          </label>
+          <label style={{ flex: 1 }}>
+            Visible Menus
+            <select
+              name="visibleMenus"
+              multiple
+              size={6}
+              disabled={!formState.visibleMenusConfigured}
+              value={formState.visibleMenus}
+              onChange={(event) => setFormState((current) => ({
+                ...current,
+                visibleMenus: Array.from(event.target.selectedOptions, (option) => option.value),
+              }))}
+            >
+              {MENU_ITEMS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+            </select>
+          </label>
+          <button>{editingRoleId ? "Save" : "Create"}</button>
+          {editingRoleId ? (
+            <button type="button" className="secondary" onClick={resetForm}>Cancel</button>
+          ) : null}
         </form>
       </section>
       {error ? <div className="error">{error}</div> : null}
       <DataTable
-        headers={["Name", "Description", "System", "Permissions", "Actions"]}
+        headers={["Name", "Description", "System", "Permissions", "Menu Filter", "Actions"]}
         rows={roles.map((r) => [
           r.name,
           r.description || "-",
           r.isSystemRole ? "Yes" : "No",
           String(r.permissions?.length || 0),
+          r.visibleMenusConfigured ? `${String(r.visibleMenus?.length || 0)} selected` : "All by default",
           <div key={r._id} className="row">
             <button
               className="secondary"
-              onClick={async () => {
-                const description = window.prompt("Description", r.description || "");
-                if (description === null) return;
-                await apiRequest(`/api/admin/roles/${r._id}`, {
-                  service: "auth",
-                  method: "PUT",
-                  token: accessToken,
-                  onUnauthorized: refreshAccessToken,
-                  body: { description },
+              onClick={() => {
+                setEditingRoleId(r._id);
+                setFormState({
+                  name: r.name,
+                  description: r.description || "",
+                  permissions: r.permissions || [],
+                  visibleMenusConfigured: !!r.visibleMenusConfigured,
+                  visibleMenus: r.visibleMenusConfigured ? (r.visibleMenus || []) : [],
                 });
-                load();
               }}
             >
               Edit

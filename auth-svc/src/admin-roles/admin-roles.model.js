@@ -1,34 +1,42 @@
-import mongoose, { mongo } from 'mongoose'
+import mongoose from "mongoose";
 
 const RoleSchema = new mongoose.Schema({
-    name: {
-        type: String, 
-        required: true, 
-        unique: true, 
-        trim: true
-    },
-    description: {
-        type: String,
-        default: ''
-    },
-    permissions: [{
-       type: mongoose.Schema.Types.ObjectId,
-       ref: 'Permission',
-       required: true
-    }],
-    isSystemRole:{
-        type: Boolean,
-        default: false
-    },
-    systemLevel: {
-        type: String,
-        enum: ["NONE", "ADMIN", "SUPER"],
-        default: "NONE"
-  }
-}, { timestamps: true, collection: "backend_roles"})
+  name: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+  },
+  description: {
+    type: String,
+    default: "",
+  },
+  permissions: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Permission",
+    required: true,
+  }],
+  visibleMenus: [{
+    type: String,
+    trim: true,
+  }],
+  visibleMenusConfigured: {
+    type: Boolean,
+    default: false,
+  },
+  isSystemRole: {
+    type: Boolean,
+    default: false,
+  },
+  systemLevel: {
+    type: String,
+    enum: ["NONE", "ADMIN", "SUPER"],
+    default: "NONE",
+  },
+}, { timestamps: true, collection: "backend_roles" });
 
-RoleSchema.index({name: 1})
+RoleSchema.index({ name: 1 });
 
-const Role = mongoose.model('Role', RoleSchema)
+const Role = mongoose.model("Role", RoleSchema);
 
-export default Role
+export default Role;

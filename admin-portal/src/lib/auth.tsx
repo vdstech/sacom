@@ -25,6 +25,8 @@ function isValidMePayload(payload: unknown): payload is MePayload {
   if (!candidate.user.email || !candidate.user.name) return false;
   if (!Array.isArray(candidate.permissions)) return false;
   if (!Array.isArray(candidate.roles)) return false;
+  if (!Array.isArray(candidate.visibleMenus)) return false;
+  if (typeof candidate.visibleMenusConfigured !== "boolean") return false;
   return true;
 }
 

@@ -1,5 +1,7 @@
 "use client";
 
+import React from "react";
+
 type PaginationControlsProps = {
   page: number;
   totalPages: number;

@@ -5,12 +5,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "@/components/AccountProvider";
 import { useStoreCart } from "@/components/StoreProvider";
+import { addCustomerWishlistItem } from "@/lib/accountApi";
 import { formatMoney } from "@/lib/pricing";
 import { STOREFRONT_STRINGS } from "@/lib/strings";
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { ready, customer, saveWishlistProduct } = useAccount();
+  const { ready, customer, loading: accountLoading, accessToken } = useAccount();
   const { cart, loading, error, updateItem, removeItem } = useStoreCart();
   const [statusMessage, setStatusMessage] = useState("");
   const [statusTone, setStatusTone] = useState<"neutral" | "error">("neutral");
@@ -29,10 +30,12 @@ export default function CheckoutPage() {
     setPendingItemId(item.itemId);
     setStatusMessage("");
     try {
-      const result = await saveWishlistProduct(item.productId, "/checkout");
-      if (result === "redirected") return;
-      const removed = await removeItem(item.itemId);
-      if (!removed) throw new Error(STOREFRONT_STRINGS.navigation.cart.unavailable);
+      if (!customer || !accessToken) {
+        router.push(`/account/auth?returnTo=${encodeURIComponent("/checkout")}`);
+        return;
+      }
+      await addCustomerWishlistItem(accessToken, item.productId);
+      await removeItem(item.itemId);
       setStatusMessage(STOREFRONT_STRINGS.checkout.movedToWishlist);
       setStatusTone("neutral");
     } catch (err) {
@@ -43,7 +46,9 @@ export default function CheckoutPage() {
     }
   };
 
-  const isEmpty = !loading && !(cart?.items || []).length;
+  const authPending = !ready || accountLoading;
+  const isRedirectingToAuth = ready && !customer;
+  const isEmpty = ready && !!customer && !loading && !(cart?.items || []).length;
 
   return (
     <section className="section">
@@ -57,7 +62,7 @@ export default function CheckoutPage() {
         {error ? <div className="status-banner status-banner--error">{error}</div> : null}
         {statusMessage ? <div className={`status-banner ${statusTone === "error" ? "status-banner--error" : ""}`}>{statusMessage}</div> : null}
 
-        {loading ? <div className="section-copy">{STOREFRONT_STRINGS.product.loading}</div> : null}
+        {authPending || loading ? <div className="section-copy">{STOREFRONT_STRINGS.product.loading}</div> : null}
 
         {isEmpty ? (
           <div className="coming-soon">
@@ -67,7 +72,7 @@ export default function CheckoutPage() {
           </div>
         ) : null}
 
-        {!loading && !isEmpty ? (
+        {!authPending && !isRedirectingToAuth && !loading && !isEmpty ? (
           <div className="checkout-layout">
             <div className="checkout-lines">
               {(cart?.items || []).map((item) => (

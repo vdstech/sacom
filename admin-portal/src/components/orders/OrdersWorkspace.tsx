@@ -10,6 +10,18 @@ import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
 
 const PAGE_SIZE = 25;
 
+type Lane = "processing" | "packaging" | "shipping" | "cancellations";
+
+type PendingHandover = {
+  type?: string;
+  status?: string;
+  fromOwner?: string;
+  toOwner?: string;
+  handedOverBy?: string;
+  handedOverAt?: string | null;
+  rejectionReason?: string;
+} | null;
+
 type OrderItemDoc = {
   id: string;
   title: string;
@@ -17,14 +29,33 @@ type OrderItemDoc = {
   stockKey?: string;
   quantity: number;
   fulfillmentStatus?: string;
-  cancelRequestedAt?: string | null;
-  shippedAt?: string | null;
-  deliveredAt?: string | null;
-  adminCancelledAt?: string | null;
+  physicalOwner?: string;
+  packageVerificationStatus?: string;
+  labelStatus?: string;
+  labelReprintCount?: number;
+  labelReprintReason?: string;
+  courierName?: string;
   outboundTrackingNumber?: string;
-  collectionTrackingNumber?: string;
+  cancellationSource?: string;
+  cancellationReason?: string;
+  cancelRequestedAt?: string | null;
+  pickedAt?: string | null;
+  handedToPackagingAt?: string | null;
+  packagingReceivedAt?: string | null;
+  packagingStartedAt?: string | null;
+  packageVerifiedAt?: string | null;
+  labelPrintedAt?: string | null;
+  packedAt?: string | null;
+  handedToShippingAt?: string | null;
+  shippingReceivedAt?: string | null;
+  shippingStartedAt?: string | null;
+  trackingNumberEnteredAt?: string | null;
+  shippedAt?: string | null;
+  cancellationReceivedAt?: string | null;
+  cancellationClosedAt?: string | null;
   lineGrandTotal?: number;
   lineTotal?: number;
+  pendingHandover?: PendingHandover;
 };
 
 type AddressSnapshot = {
@@ -61,12 +92,26 @@ type PaginatedResponse<T> = {
 };
 
 type OrdersWorkspaceProps = {
-  title?: string;
-  subtitle?: string;
-  lockedFulfillmentStatus?: string;
-  lockedPaymentStatus?: string;
+  title: string;
+  subtitle: string;
+  lane: Lane;
   backHref?: string;
   backLabel?: string;
+  requiredAnyOf?: string[];
+};
+
+const LANE_ENDPOINTS: Record<Lane, string> = {
+  processing: "/api/admin/orders/processing/picking-queue",
+  packaging: "/api/admin/orders/packaging/receipt-queue",
+  shipping: "/api/admin/orders/shipping/receipt-queue",
+  cancellations: "/api/admin/orders/cancellations/pending",
+};
+
+const DEFAULT_REQUIRED: Record<Lane, string[]> = {
+  processing: ["order:processing"],
+  packaging: ["order:packaging"],
+  shipping: ["order:shipping"],
+  cancellations: ["order:cancellation"],
 };
 
 function formatCurrency(value: number) {
@@ -77,7 +122,7 @@ function formatCurrency(value: number) {
   }).format(Number(value || 0));
 }
 
-function formatDate(value?: string) {
+function formatDate(value?: string | null) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
@@ -85,7 +130,7 @@ function formatDate(value?: string) {
 }
 
 function statusLabel(status?: string) {
-  if (!status) return ADMIN_UI_STRINGS.orders.states.processing;
+  if (!status) return "-";
   return ADMIN_UI_STRINGS.orders.states[status as keyof typeof ADMIN_UI_STRINGS.orders.states] || status;
 }
 
@@ -96,9 +141,12 @@ function paymentLabel(status?: string) {
   ] || status;
 }
 
-function orderListLabel(order: OrderDoc) {
-  if (order.paymentStatus === "payment_failed") return paymentLabel(order.paymentStatus);
-  return statusLabel(order.fulfillmentStatus);
+function hasPermission(userPermissions: string[], permission: string) {
+  return userPermissions.includes(permission);
+}
+
+function hasAnyPermission(userPermissions: string[], needed: string[]) {
+  return needed.some((permission) => userPermissions.includes(permission));
 }
 
 function getOrderAmount(order: OrderDoc) {
@@ -120,23 +168,95 @@ function joinAddress(address?: AddressSnapshot | null) {
   ].filter(Boolean) as string[];
 }
 
+function getLaneDescription(lane: Lane, item: OrderItemDoc) {
+  const status = String(item.fulfillmentStatus || "").toUpperCase();
+  const owner = String(item.physicalOwner || "").toUpperCase();
+  const pendingType = String(item.pendingHandover?.type || "").toUpperCase();
+  const pendingStatus = String(item.pendingHandover?.status || "").toUpperCase();
+
+  if (lane === "processing") {
+    if (status === "RESERVED") return "Ready to pick from warehouse.";
+    if (status === "PICKED_FROM_WAREHOUSE") return "Picked and awaiting handover to packaging.";
+    if (status === "HANDED_TO_PACKAGING" && pendingType === "PROCESSING_TO_PACKAGING") return "Waiting for packaging to confirm receipt.";
+    if (status === "CANCEL_REQUESTED" && owner === "PROCESSING_MANAGER") {
+      return "Customer cancellation requested. Processing owns the picked item and must hand it to the cancellation manager.";
+    }
+  }
+
+  if (lane === "packaging") {
+    if (status === "HANDED_TO_PACKAGING") return "Packaging can confirm or reject this handover.";
+    if (status === "PACKAGING_RECEIVED") return "Ready to start packaging.";
+    if (status === "PACKAGING_IN_PROGRESS") return "Verify the package, print label, and mark it packed.";
+    if (status === "PACKED") return "Ready to hand over to shipping.";
+    if (status === "HANDED_TO_SHIPPING" && pendingType === "PACKAGING_TO_SHIPPING") return "Waiting for shipping to confirm receipt.";
+    if (status === "CANCEL_REQUESTED" && owner === "PACKAGING_MANAGER") {
+      return pendingType === "PACKAGING_TO_SHIPPING" && pendingStatus === "REJECTED"
+        ? "Shipping rejected receipt after cancellation. Packaging owns this item and must hand it to the cancellation manager."
+        : "Customer cancellation requested. Packaging owns this item and must hand it to the cancellation manager.";
+    }
+  }
+
+  if (lane === "shipping") {
+    if (status === "HANDED_TO_SHIPPING") return "Shipping can confirm or reject this handover.";
+    if (status === "SHIPPING_RECEIVED") return "Ready to start shipping.";
+    if (status === "SHIPPING_IN_PROGRESS") return "Assign courier, enter tracking, and mark shipped.";
+    if (status === "CANCEL_REQUESTED" && pendingType === "PACKAGING_TO_SHIPPING" && pendingStatus === "PENDING_RECEIPT") {
+      return "Customer cancellation requested during shipping handover. Shipping must confirm or reject receipt first.";
+    }
+    if (status === "CANCEL_REQUESTED" && owner === "SHIPPING_OPERATOR") {
+      return "Customer cancellation requested. Shipping received the item and must hand it to the cancellation manager.";
+    }
+  }
+
+  if (lane === "cancellations") {
+    if (status === "CANCEL_REQUESTED") return "Pending handover into the cancellation lane.";
+    if (status === "HANDED_TO_CANCELLATION") return "Waiting for cancellation receipt confirmation.";
+    if (status === "CANCELLATION_RECEIVED") return "Resolve the cancelled item as restocked, damaged, or lost.";
+  }
+
+  return "";
+}
+
+function getTimeline(item: OrderItemDoc) {
+  const events = [
+    ["Picked", item.pickedAt],
+    ["Handed to packaging", item.handedToPackagingAt],
+    ["Packaging received", item.packagingReceivedAt],
+    ["Packaging started", item.packagingStartedAt],
+    ["Package verified", item.packageVerifiedAt],
+    ["Label printed", item.labelPrintedAt],
+    ["Packed", item.packedAt],
+    ["Handed to shipping", item.handedToShippingAt],
+    ["Shipping received", item.shippingReceivedAt],
+    ["Shipping started", item.shippingStartedAt],
+    ["Tracking entered", item.trackingNumberEnteredAt],
+    ["Shipped", item.shippedAt],
+    ["Cancellation received", item.cancellationReceivedAt],
+    ["Cancellation closed", item.cancellationClosedAt],
+  ].filter(([, value]) => !!value);
+
+  return events as Array<[string, string]>;
+}
+
 export function OrdersWorkspace({
-  title = ADMIN_UI_STRINGS.orders.title,
-  subtitle = ADMIN_UI_STRINGS.orders.detailTitle,
-  lockedFulfillmentStatus = "",
-  lockedPaymentStatus = "",
+  title,
+  subtitle,
+  lane,
   backHref = "/admin/orders/dashboard",
-  backLabel = ADMIN_UI_STRINGS.menu.ordersDashboard,
+  backLabel = ADMIN_UI_STRINGS.orders.backToDashboard,
+  requiredAnyOf,
 }: OrdersWorkspaceProps) {
-  const { accessToken, refreshAccessToken } = useAuth();
+  const { accessToken, refreshAccessToken, me } = useAuth();
+  const permissions = me?.permissions || [];
+  const roleNames = (me?.roles || []).map((role) => String(role?.name || "").toUpperCase());
+  const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
+  const isSystemBypass = systemLevel === "SUPER" || systemLevel === "ADMIN";
   const [orders, setOrders] = useState<OrderDoc[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [stockKeyInput, setStockKeyInput] = useState("");
   const [stockKey, setStockKey] = useState("");
-  const [selectedState, setSelectedState] = useState(lockedFulfillmentStatus);
-  const [selectedPaymentState, setSelectedPaymentState] = useState(lockedPaymentStatus);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -144,8 +264,6 @@ export function OrdersWorkspace({
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [actionBusyKey, setActionBusyKey] = useState("");
-  const [outboundDrafts, setOutboundDrafts] = useState<Record<string, string>>({});
-  const [collectionDrafts, setCollectionDrafts] = useState<Record<string, string>>({});
 
   const selectedOrder = useMemo(
     () => orders.find((order) => order.id === selectedOrderId) || orders[0] || null,
@@ -158,13 +276,11 @@ export function OrdersWorkspace({
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (stockKey) params.set("stockKey", stockKey);
-      if (selectedState) params.set("fulfillmentStatus", selectedState);
-      if (selectedPaymentState) params.set("paymentStatus", selectedPaymentState);
       params.set("page", String(page));
       params.set("limit", String(PAGE_SIZE));
 
       const payload = await apiRequest<PaginatedResponse<OrderDoc>>(
-        `/api/admin/orders${params.toString() ? `?${params.toString()}` : ""}`,
+        `${LANE_ENDPOINTS[lane]}${params.toString() ? `?${params.toString()}` : ""}`,
         {
           token: accessToken,
           onUnauthorized: refreshAccessToken,
@@ -189,39 +305,6 @@ export function OrdersWorkspace({
     }
   };
 
-  const loadOrder = async (orderId: string) => {
-    setSelectedOrderId(orderId);
-    try {
-      const payload = await apiRequest<{ order: OrderDoc }>(`/api/admin/orders/${encodeURIComponent(orderId)}`, {
-        token: accessToken,
-        onUnauthorized: refreshAccessToken,
-      });
-      const nextOrder = payload.order;
-      setOrders((current) => {
-        const next = current.map((order) => order.id === nextOrder.id ? nextOrder : order);
-        return next.some((order) => order.id === nextOrder.id) ? next : [nextOrder, ...next];
-      });
-      setActionError("");
-    } catch (err) {
-      setActionError((err as Error).message);
-    }
-  };
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const nextSearch = params.get("orderId") || "";
-    const nextStockKey = (params.get("stockKey") || "").toUpperCase();
-    const nextState = lockedFulfillmentStatus || params.get("fulfillmentStatus") || "";
-    const nextPaymentState = lockedPaymentStatus || params.get("paymentStatus") || "";
-
-    setSearchInput(nextSearch);
-    setSearch(nextSearch);
-    setStockKeyInput(nextStockKey);
-    setStockKey(nextStockKey);
-    setSelectedState(nextState);
-    setSelectedPaymentState(nextPaymentState);
-  }, [lockedFulfillmentStatus, lockedPaymentStatus]);
-
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const nextSearch = searchInput.trim();
@@ -229,61 +312,36 @@ export function OrdersWorkspace({
       setSearch((current) => current === nextSearch ? current : nextSearch);
       setStockKey((current) => current === nextStockKey ? current : nextStockKey);
       setPage(1);
-    }, 300);
+    }, 250);
 
     return () => window.clearTimeout(timer);
   }, [searchInput, stockKeyInput]);
 
   useEffect(() => {
     load();
-  }, [search, stockKey, selectedState, selectedPaymentState, page]);
+  }, [lane, page, search, stockKey, accessToken]);
 
-  useEffect(() => {
-    if (!selectedOrder) return;
-    setOutboundDrafts((current) => {
-      const next = { ...current };
-      for (const item of selectedOrder.items || []) {
-        if (item.outboundTrackingNumber && !next[item.id]) next[item.id] = item.outboundTrackingNumber;
-      }
-      return next;
-    });
-    setCollectionDrafts((current) => {
-      const next = { ...current };
-      for (const item of selectedOrder.items || []) {
-        if (item.collectionTrackingNumber && !next[item.id]) next[item.id] = item.collectionTrackingNumber;
-      }
-      return next;
-    });
-  }, [selectedOrder]);
+  const performAction = async (
+    orderId: string,
+    itemId: string,
+    endpoint: string,
+    body?: Record<string, unknown>,
+    options?: { confirmMessage?: string; afterSuccess?: () => void }
+  ) => {
+    if (actionBusyKey) return;
+    if (options?.confirmMessage && !window.confirm(options.confirmMessage)) return;
 
-  const setOrderFromPayload = (nextOrder: OrderDoc) => {
-    setOrders((current) => current.map((order) => order.id === nextOrder.id ? nextOrder : order));
-    setSelectedOrderId(nextOrder.id);
-    setActionError("");
-  };
-
-  const submitLifecycleAction = async ({
-    method,
-    path,
-    body,
-    busyKey,
-  }: {
-    method: "POST" | "PATCH";
-    path: string;
-    body?: unknown;
-    busyKey: string;
-  }) => {
-    setActionBusyKey(busyKey);
+    setActionBusyKey(`${itemId}:${endpoint}`);
     setActionError("");
     try {
-      const payload = await apiRequest<{ order: OrderDoc }>(path, {
-        method,
-        body,
+      await apiRequest<{ order: OrderDoc }>(endpoint, {
+        method: "POST",
         token: accessToken,
         onUnauthorized: refreshAccessToken,
+        body,
       });
-      setOrderFromPayload(payload.order);
-      await load(payload.order.id);
+      options?.afterSuccess?.();
+      await load(orderId);
     } catch (err) {
       setActionError((err as Error).message);
     } finally {
@@ -291,407 +349,450 @@ export function OrdersWorkspace({
     }
   };
 
-  const handlePack = async (orderId: string, itemId: string) => {
-    await submitLifecycleAction({
-      method: "PATCH",
-      path: `/api/admin/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`,
-      body: { fulfillmentStatus: "packed" },
-      busyKey: `${itemId}:pack`,
-    });
+  const openLabelPreview = (orderId: string, itemId: string) => {
+    window.open(`/admin/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/label`, "_blank", "noopener,noreferrer");
   };
 
-  const handleProcessingCancel = async (orderId: string, itemId: string) => {
-    if (!window.confirm(ADMIN_UI_STRINGS.orders.cancelConfirm)) return;
-    await submitLifecycleAction({
-      method: "POST",
-      path: `/api/admin/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/cancel`,
-      busyKey: `${itemId}:cancel`,
-    });
-  };
-
-  const handleUnpackCancel = async (orderId: string, itemId: string) => {
-    if (!window.confirm(ADMIN_UI_STRINGS.orders.unpackConfirm)) return;
-    await submitLifecycleAction({
-      method: "POST",
-      path: `/api/admin/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/unpack-cancel`,
-      busyKey: `${itemId}:unpack-cancel`,
-    });
-  };
-
-  const handleShip = async (orderId: string, itemId: string) => {
-    const tracking = String(outboundDrafts[itemId] || "").trim();
-    if (!tracking) {
-      setActionError(ADMIN_UI_STRINGS.orders.outboundTrackingRequired);
-      return;
-    }
-    await submitLifecycleAction({
-      method: "PATCH",
-      path: `/api/admin/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`,
-      body: {
-        fulfillmentStatus: "shipped",
-        outboundTrackingNumber: tracking,
-      },
-      busyKey: `${itemId}:ship`,
-    });
-  };
-
-  const handleCollectionSchedule = async (orderId: string, itemId: string) => {
-    const tracking = String(collectionDrafts[itemId] || "").trim();
-    if (!tracking) {
-      setActionError(ADMIN_UI_STRINGS.orders.collectionTrackingRequired);
-      return;
-    }
-    await submitLifecycleAction({
-      method: "PATCH",
-      path: `/api/admin/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`,
-      body: {
-        fulfillmentStatus: "collection_scheduled",
-        collectionTrackingNumber: tracking,
-      },
-      busyKey: `${itemId}:collection`,
-    });
-  };
-
-  const handleSimpleTransition = async (
-    orderId: string,
-    itemId: string,
-    nextStatus: "return_in_transit" | "return_received" | "refund_completed"
-  ) => {
-    await submitLifecycleAction({
-      method: "PATCH",
-      path: `/api/admin/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`,
-      body: { fulfillmentStatus: nextStatus },
-      busyKey: `${itemId}:${nextStatus}`,
-    });
-  };
+  const required = requiredAnyOf || DEFAULT_REQUIRED[lane];
 
   return (
-    <ProtectedPage anyOf={["order:read", "order:write", "order:delete"]}>
-      <section className="card orders-toolbar orders-toolbar--headline">
+    <ProtectedPage anyOf={required}>
+      <section className="card row" style={{ justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div>
-          <div className="orders-detail__eyebrow">{title}</div>
-          <h1 style={{ margin: "6px 0 0" }}>{subtitle}</h1>
+          <div className="orders-detail__eyebrow">{subtitle}</div>
+          <h1 style={{ margin: "6px 0 0" }}>{title}</h1>
         </div>
         <div className="row">
           <Link href={backHref}><button className="secondary">{backLabel}</button></Link>
-          <Link href="/admin/orders/metrics"><button className="secondary">{ADMIN_UI_STRINGS.menu.ordersMetrics}</button></Link>
           <button className="secondary" onClick={() => load(selectedOrderId)}>{ADMIN_UI_STRINGS.common.refresh}</button>
         </div>
       </section>
 
-      <section className="card orders-toolbar">
-        <div style={{ minWidth: 220, flex: "1 1 260px" }}>
-          <label>
-            {ADMIN_UI_STRINGS.orders.searchLabel}
-            <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Order id, name, title, tracking" />
-          </label>
+      <section className="card row" style={{ gap: 12, alignItems: "end", flexWrap: "wrap" }}>
+        <label style={{ minWidth: 220, flex: "1 1 220px" }}>
+          {ADMIN_UI_STRINGS.orders.searchLabel}
+          <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} />
+        </label>
+        <label style={{ minWidth: 220, flex: "1 1 220px" }}>
+          {ADMIN_UI_STRINGS.orders.stockKeyLabel}
+          <input value={stockKeyInput} onChange={(event) => setStockKeyInput(event.target.value)} />
+        </label>
+        <div className="section-copy">
+          {ADMIN_UI_STRINGS.orders.summaryQueueCount}: {total}
         </div>
-        <div style={{ minWidth: 180 }}>
-          <label>
-            {ADMIN_UI_STRINGS.orders.stockKeyLabel}
-            <input value={stockKeyInput} onChange={(event) => setStockKeyInput(event.target.value)} placeholder="STK-..." />
-          </label>
-        </div>
-        {!lockedFulfillmentStatus ? (
-          <div style={{ minWidth: 180 }}>
-            <label>
-              {ADMIN_UI_STRINGS.orders.stateLabel}
-              <select
-                value={selectedState}
-                onChange={(event) => {
-                  setSelectedState(event.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">{ADMIN_UI_STRINGS.orders.allStates}</option>
-                {Object.entries(ADMIN_UI_STRINGS.orders.states).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-        ) : null}
-        {!lockedPaymentStatus ? (
-          <div style={{ minWidth: 180 }}>
-            <label>
-              {ADMIN_UI_STRINGS.orders.paymentStateLabel}
-              <select
-                value={selectedPaymentState}
-                onChange={(event) => {
-                  setSelectedPaymentState(event.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">{ADMIN_UI_STRINGS.orders.allPayments}</option>
-                {Object.entries(ADMIN_UI_STRINGS.orders.paymentStates).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-        ) : null}
       </section>
 
       {error ? <div className="error">{error}</div> : null}
       {actionError ? <div className="error">{actionError}</div> : null}
       {loading ? <div>{ADMIN_UI_STRINGS.common.loadingOrders}</div> : null}
 
-      <section className="orders-layout">
-        <div className="orders-list">
-          {orders.map((order) => (
-            <button
-              key={order.id}
-              type="button"
-              className={`card orders-list__item ${selectedOrder?.id === order.id ? "is-active" : ""}`}
-              onClick={() => loadOrder(order.id)}
-            >
-              <strong>#{order.id.slice(-6).toUpperCase()}</strong>
-              <span>{formatDate(order.placedAt)}</span>
-              <span>{order.itemCount} items</span>
-              <span>{orderListLabel(order)}</span>
-              <span>{formatCurrency(getOrderAmount(order))}</span>
-            </button>
-          ))}
-          {!orders.length && !loading ? <div className="card">No orders match the current filters.</div> : null}
-        </div>
+      {!loading && !orders.length ? (
+        <section className="card">
+          <p className="section-copy">{ADMIN_UI_STRINGS.orders.emptyQueue}</p>
+        </section>
+      ) : null}
 
-        <div className="orders-detail">
-          {selectedOrder ? (
-            <section className="card orders-detail__panel">
-              <div className="orders-detail__header">
+      {orders.length ? (
+        <div className="orders-layout">
+          <aside className="orders-list">
+            {orders.map((order) => (
+              <button
+                key={order.id}
+                type="button"
+                className={`orders-list__row ${selectedOrder?.id === order.id ? "is-active" : ""}`}
+                onClick={() => setSelectedOrderId(order.id)}
+              >
                 <div>
-                  <div className="orders-detail__eyebrow">{ADMIN_UI_STRINGS.orders.detailTitle}</div>
-                  <h1 style={{ margin: "6px 0 0" }}>#{selectedOrder.id}</h1>
-                  <div className="orders-detail__summary">
-                    <span className="badge">{ADMIN_UI_STRINGS.orders.orderStatusPrefix}: {statusLabel(selectedOrder.fulfillmentStatus)}</span>
-                    <span className="badge">{ADMIN_UI_STRINGS.orders.paymentStatusPrefix}: {paymentLabel(selectedOrder.paymentStatus)}</span>
-                    {selectedOrder.paymentReference ? <span className="badge">Ref: {selectedOrder.paymentReference}</span> : null}
-                  </div>
+                  <strong>#{order.id.slice(-6).toUpperCase()}</strong>
+                  <div className="section-copy">{formatDate(order.placedAt)}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div>{formatDate(selectedOrder.placedAt)}</div>
+                  <div>{statusLabel(order.fulfillmentStatus)}</div>
+                  <div className="section-copy">{formatCurrency(getOrderAmount(order))}</div>
+                </div>
+              </button>
+            ))}
+          </aside>
+
+          <section className="card orders-detail">
+            {selectedOrder ? (
+              <div style={{ display: "grid", gap: 20 }}>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "start", flexWrap: "wrap" }}>
+                  <div>
+                    <div className="orders-detail__eyebrow">{ADMIN_UI_STRINGS.orders.detailTitle}</div>
+                    <h2 style={{ margin: "6px 0 0" }}>#{selectedOrder.id.slice(-6).toUpperCase()}</h2>
+                    <div className="section-copy">
+                      {ADMIN_UI_STRINGS.orders.orderStatusPrefix}: {statusLabel(selectedOrder.fulfillmentStatus)}
+                    </div>
+                    <div className="section-copy">
+                      {ADMIN_UI_STRINGS.orders.paymentStatusPrefix}: {paymentLabel(selectedOrder.paymentStatus)}
+                    </div>
+                    <div className="section-copy">
+                      {ADMIN_UI_STRINGS.orders.itemsInQueue}: {selectedOrder.items.length}
+                    </div>
+                  </div>
                   <strong>{formatCurrency(getOrderAmount(selectedOrder))}</strong>
                 </div>
-              </div>
 
-              {selectedOrder.paymentStatus === "payment_failed" ? (
-                <div className="orders-item-card__flag orders-item-card__flag--alert">
-                  <strong>{paymentLabel(selectedOrder.paymentStatus)}</strong>
-                  <span>{ADMIN_UI_STRINGS.orders.failedPaymentBlocked}</span>
-                </div>
-              ) : null}
+                {selectedOrder.addressSnapshot ? (
+                  <div className="card" style={{ display: "grid", gap: 8 }}>
+                    <div className="orders-detail__eyebrow">{ADMIN_UI_STRINGS.orders.shippingAddress}</div>
+                    {joinAddress(selectedOrder.addressSnapshot).map((line) => <div key={line}>{line}</div>)}
+                  </div>
+                ) : null}
 
-              {selectedOrder.addressSnapshot ? (
-                <div className="orders-address">
-                  {joinAddress(selectedOrder.addressSnapshot).map((line) => (
-                    <span key={line}>{line}</span>
-                  ))}
-                </div>
-              ) : null}
+                <div style={{ display: "grid", gap: 16 }}>
+                  {selectedOrder.items.map((item) => {
+                    const status = String(item.fulfillmentStatus || "").toUpperCase();
+                    const owner = String(item.physicalOwner || "").toUpperCase();
+                    const pendingType = String(item.pendingHandover?.type || "").toUpperCase();
+                    const pendingStatus = String(item.pendingHandover?.status || "").toUpperCase();
+                    const isCancelledProcessingOwned = status === "CANCEL_REQUESTED" && owner === "PROCESSING_MANAGER";
+                    const isCancelledShippingPendingReceipt =
+                      status === "CANCEL_REQUESTED" &&
+                      pendingType === "PACKAGING_TO_SHIPPING" &&
+                      pendingStatus === "PENDING_RECEIPT";
+                    const isCancelledPackagingOwned =
+                      status === "CANCEL_REQUESTED" &&
+                      owner === "PACKAGING_MANAGER" &&
+                      !isCancelledShippingPendingReceipt;
+                    const isCancelledShippingOwned = status === "CANCEL_REQUESTED" && owner === "SHIPPING_OPERATOR";
+                    const hasProcessingAccess = isSystemBypass ||
+                      hasAnyPermission(permissions, ["order:processing", "order:pack", "order:override", "order:admin"]) ||
+                      roleNames.includes("PROCESSING_MANAGER") ||
+                      roleNames.includes("ORDER_PROCESSOR") ||
+                      roleNames.includes("ORDER_OPERATOR") ||
+                      roleNames.includes("ORDER_OPERATIONS");
+                    const hasPackagingAccess = isSystemBypass ||
+                      hasAnyPermission(permissions, ["order:packaging", "order:pack", "order:override", "order:admin"]) ||
+                      roleNames.includes("PACKAGING_MANAGER") ||
+                      roleNames.includes("ORDER_OPERATIONS");
+                    const hasShippingAccess = isSystemBypass ||
+                      hasAnyPermission(permissions, ["order:shipping", "order:ship", "order:override", "order:admin"]) ||
+                      roleNames.includes("SHIPPING_OPERATOR") ||
+                      roleNames.includes("SHIPPING_MANAGER") ||
+                      roleNames.includes("ORDER_OPERATIONS");
+                    const hasCancellationAccess = isSystemBypass ||
+                      hasAnyPermission(permissions, ["order:cancellation", "order:cancel:manage", "order:cancel", "order:override", "order:admin"]) ||
+                      roleNames.includes("CANCELLATION_MANAGER") ||
+                      roleNames.includes("RETURN_MANAGER") ||
+                      roleNames.includes("ORDER_OPERATIONS");
+                    const hasAdminAccess = isSystemBypass ||
+                      hasAnyPermission(permissions, ["order:admin", "order:override", "order:cancel"]) ||
+                      roleNames.includes("ORDER_ADMIN") ||
+                      roleNames.includes("ORDER_MANAGER") ||
+                      roleNames.includes("ORDER_OPERATIONS");
 
-              <div className="orders-items">
-                {selectedOrder.items.map((item) => {
-                  const outboundValue = outboundDrafts[item.id] ?? item.outboundTrackingNumber ?? "";
-                  const collectionValue = collectionDrafts[item.id] ?? item.collectionTrackingNumber ?? "";
-                  const status = String(item.fulfillmentStatus || "processing");
-                  const hasCancellationRequest = !!item.cancelRequestedAt;
-                  const canAct = selectedOrder.paymentStatus !== "payment_failed";
-                  const canPack = canAct && status === "processing";
-                  const canCancel = canAct && status === "processing";
-                  const canShip = canAct && status === "packed" && !hasCancellationRequest;
-                  const canUnpackCancel = canAct && status === "packed" && hasCancellationRequest;
-                  const canScheduleCollection = canAct && status === "return_requested";
-                  const canMarkReturnInTransit = canAct && status === "collection_scheduled";
-                  const canMarkReturnReceived = canAct && status === "return_in_transit";
-                  const canMarkRefundCompleted = canAct && status === "return_received";
+                    const canAdminCancel = hasAdminAccess &&
+                      !["SHIPPED", "DELIVERED", "CANCELLED_BEFORE_PICKING", "CANCEL_RESTOCKED", "CANCEL_DAMAGED", "CANCEL_LOST", "CANCEL_CLOSED"].includes(status);
+                    const canProcessingPick = lane === "processing" && status === "RESERVED" && hasProcessingAccess;
+                    const canProcessingHandover = lane === "processing" && status === "PICKED_FROM_WAREHOUSE" && hasProcessingAccess;
 
-                  return (
-                    <article key={item.id} className="orders-item-card">
-                      <div style={{ flex: "1 1 auto" }}>
-                        <div className="orders-item-card__title-row">
+                    const canPackagingConfirm = lane === "packaging" && status === "HANDED_TO_PACKAGING" && hasPackagingAccess;
+                    const canPackagingReject = lane === "packaging" && status === "HANDED_TO_PACKAGING" && hasPackagingAccess;
+                    const canPackagingStart = lane === "packaging" && status === "PACKAGING_RECEIVED" && hasPackagingAccess;
+                    const canPackagingVerify = lane === "packaging" && status === "PACKAGING_IN_PROGRESS" && item.packageVerificationStatus !== "VERIFIED" && hasPackagingAccess;
+                    const canPackagingPrint = lane === "packaging" && status === "PACKAGING_IN_PROGRESS" && item.packageVerificationStatus === "VERIFIED" && item.labelStatus !== "PRINTED" && hasPackagingAccess;
+                    const canPackagingReprint = lane === "packaging" && status === "PACKAGING_IN_PROGRESS" && item.labelStatus === "PRINTED" && hasPackagingAccess;
+                    const canPackagingPack = lane === "packaging" && status === "PACKAGING_IN_PROGRESS" && item.packageVerificationStatus === "VERIFIED" && item.labelStatus === "PRINTED" && hasPackagingAccess;
+                    const canPackagingHandover = lane === "packaging" && status === "PACKED" && hasPackagingAccess;
+
+                    const canShippingConfirm = lane === "shipping" && (status === "HANDED_TO_SHIPPING" || isCancelledShippingPendingReceipt) && hasShippingAccess;
+                    const canShippingReject = lane === "shipping" && (status === "HANDED_TO_SHIPPING" || isCancelledShippingPendingReceipt) && hasShippingAccess;
+                    const canShippingStart = lane === "shipping" && status === "SHIPPING_RECEIVED" && hasShippingAccess;
+                    const canShippingAssignCourier = lane === "shipping" && status === "SHIPPING_IN_PROGRESS" && hasShippingAccess;
+                    const canShippingTracking = lane === "shipping" && status === "SHIPPING_IN_PROGRESS" && hasShippingAccess;
+                    const canShippingMarkShipped = lane === "shipping" && status === "SHIPPING_IN_PROGRESS" && !!item.courierName && !!item.outboundTrackingNumber && hasShippingAccess;
+
+                    const canCancellationHandover =
+                      (lane === "processing" && isCancelledProcessingOwned && hasProcessingAccess) ||
+                      (lane === "packaging" && isCancelledPackagingOwned && hasPackagingAccess) ||
+                      (lane === "shipping" && isCancelledShippingOwned && hasShippingAccess);
+                    const canCancellationConfirm = lane === "cancellations" && status === "HANDED_TO_CANCELLATION" && hasCancellationAccess;
+                    const canCancellationRestock = lane === "cancellations" && status === "CANCELLATION_RECEIVED" && hasCancellationAccess;
+                    const canCancellationDamaged = lane === "cancellations" && status === "CANCELLATION_RECEIVED" && hasCancellationAccess;
+                    const canCancellationLost = lane === "cancellations" && ["HANDED_TO_CANCELLATION", "CANCELLATION_RECEIVED"].includes(status) && hasCancellationAccess;
+                    const canViewLabel = !isCancelledPackagingOwned && (canPackagingPrint || canPackagingReprint || item.labelStatus === "PRINTED");
+
+                    return (
+                      <article key={item.id} className="card" style={{ display: "grid", gap: 14 }}>
+                        <div className="row" style={{ justifyContent: "space-between", alignItems: "start", flexWrap: "wrap" }}>
                           <div>
                             <strong>{item.title}</strong>
-                            <div className="orders-item-card__meta">
-                              {item.stockKey ? <span>{item.stockKey}</span> : null}
-                              {item.slug ? <span>{item.slug}</span> : null}
-                              <span>Qty {item.quantity}</span>
-                              <span>{formatCurrency(getItemAmount(item))}</span>
+                            <div className="section-copy">{item.stockKey || "-"}</div>
+                            <div className="section-copy">
+                              {ADMIN_UI_STRINGS.orders.itemStateLabel}: {statusLabel(item.fulfillmentStatus)}
                             </div>
+                            <div className="section-copy">
+                              {ADMIN_UI_STRINGS.orders.physicalOwnerLabel}: {item.physicalOwner || "-"}
+                            </div>
+                            {getLaneDescription(lane, item) ? (
+                              <div className="section-copy">{getLaneDescription(lane, item)}</div>
+                            ) : null}
                           </div>
-                          <span className="badge">{statusLabel(status)}</span>
+                          <div style={{ textAlign: "right" }}>
+                            <div>{ADMIN_UI_STRINGS.orders.itemQuantityLabel}: {item.quantity}</div>
+                            <strong>{formatCurrency(getItemAmount(item))}</strong>
+                          </div>
                         </div>
 
-                        {hasCancellationRequest ? (
-                          <div className="orders-item-card__flag orders-item-card__flag--alert">
-                            <strong>{ADMIN_UI_STRINGS.orders.cancellationRequested}</strong>
-                            <span>{ADMIN_UI_STRINGS.orders.cancellationRequestedHint}</span>
-                          </div>
-                        ) : null}
-
-                        {item.outboundTrackingNumber ? (
-                          <div className="orders-item-card__tracking">
-                            <span>{ADMIN_UI_STRINGS.orders.outboundTrackingLabel}</span>
-                            <strong>{item.outboundTrackingNumber}</strong>
-                          </div>
-                        ) : null}
-
-                        {item.collectionTrackingNumber ? (
-                          <div className="orders-item-card__tracking">
-                            <span>{ADMIN_UI_STRINGS.orders.collectionTrackingLabel}</span>
-                            <strong>{item.collectionTrackingNumber}</strong>
-                          </div>
-                        ) : null}
-
-                        {item.deliveredAt ? (
-                          <div className="orders-item-card__tracking">
-                            <span>{ADMIN_UI_STRINGS.orders.states.delivered}</span>
-                            <strong>{formatDate(item.deliveredAt)}</strong>
-                          </div>
-                        ) : null}
-
-                        {item.adminCancelledAt ? (
-                          <div className="orders-item-card__tracking">
-                            <span>{ADMIN_UI_STRINGS.orders.states.cancelled_by_admin}</span>
-                            <strong>{formatDate(item.adminCancelledAt)}</strong>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="orders-item-card__control">
-                        <div className="orders-item-card__actions-title">{ADMIN_UI_STRINGS.orders.nextActionsLabel}</div>
-                        <div className="orders-item-card__actions">
-                          {canPack ? (
-                            <button
-                              type="button"
-                              className="secondary"
-                              disabled={actionBusyKey === `${item.id}:pack`}
-                              onClick={() => handlePack(selectedOrder.id, item.id)}
-                            >
-                              {ADMIN_UI_STRINGS.orders.packItem}
-                            </button>
+                        <div className="orders-item-meta">
+                          {item.packageVerificationStatus ? (
+                            <span>{ADMIN_UI_STRINGS.orders.packageVerificationLabel}: {item.packageVerificationStatus}</span>
                           ) : null}
+                          {item.labelStatus ? (
+                            <span>{ADMIN_UI_STRINGS.orders.labelStatusLabel}: {item.labelStatus}</span>
+                          ) : null}
+                          {item.labelReprintCount ? (
+                            <span>{ADMIN_UI_STRINGS.orders.labelReprintsLabel}: {item.labelReprintCount}</span>
+                          ) : null}
+                          {item.courierName ? (
+                            <span>{ADMIN_UI_STRINGS.orders.courierLabel}: {item.courierName}</span>
+                          ) : null}
+                          {item.outboundTrackingNumber ? (
+                            <span>{ADMIN_UI_STRINGS.orders.outboundTrackingLabel}: {item.outboundTrackingNumber}</span>
+                          ) : null}
+                          {item.pendingHandover?.type ? (
+                            <span>{ADMIN_UI_STRINGS.orders.pendingHandoverLabel}: {item.pendingHandover.type}</span>
+                          ) : null}
+                          {item.cancellationReason ? (
+                            <span>{ADMIN_UI_STRINGS.orders.cancellationReasonLabel}: {item.cancellationReason}</span>
+                          ) : null}
+                        </div>
 
-                          {canCancel ? (
+                        {getTimeline(item).length ? (
+                          <div className="orders-item-timeline">
+                            {getTimeline(item).map(([label, value]) => (
+                              <span key={`${item.id}:${label}`}>{label}: {formatDate(value)}</span>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                          {canAdminCancel ? (
                             <button
-                              type="button"
                               className="danger"
-                              disabled={actionBusyKey === `${item.id}:cancel`}
-                              onClick={() => handleProcessingCancel(selectedOrder.id, item.id)}
+                              disabled={actionBusyKey === `${item.id}:/api/admin/orders/order-items/${item.id}/cancel`}
+                              onClick={() => performAction(
+                                selectedOrder.id,
+                                item.id,
+                                `/api/admin/orders/order-items/${encodeURIComponent(item.id)}/cancel`,
+                                { reason: "ADMIN_CANCELLED" },
+                                { confirmMessage: ADMIN_UI_STRINGS.orders.cancelConfirm }
+                              )}
                             >
                               {ADMIN_UI_STRINGS.orders.cancelItem}
                             </button>
                           ) : null}
 
-                          {canShip ? (
-                            <>
-                              <input
-                                value={outboundValue}
-                                onChange={(event) => setOutboundDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
-                                placeholder={ADMIN_UI_STRINGS.orders.outboundTrackingLabel}
-                              />
-                              <button
-                                type="button"
-                                disabled={actionBusyKey === `${item.id}:ship`}
-                                onClick={() => handleShip(selectedOrder.id, item.id)}
-                              >
-                                {ADMIN_UI_STRINGS.orders.shipItem}
-                              </button>
-                            </>
+                          {canProcessingPick ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/pick`)}>
+                              {ADMIN_UI_STRINGS.orders.pickItem}
+                            </button>
                           ) : null}
-
-                          {canUnpackCancel ? (
-                            <button
-                              type="button"
-                              className="danger"
-                              disabled={actionBusyKey === `${item.id}:unpack-cancel`}
-                              onClick={() => handleUnpackCancel(selectedOrder.id, item.id)}
-                            >
-                              {ADMIN_UI_STRINGS.orders.unpackCancelItem}
+                          {canProcessingHandover ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/handover-to-packaging`)}>
+                              {ADMIN_UI_STRINGS.orders.handoverToPackaging}
                             </button>
                           ) : null}
 
-                          {canScheduleCollection ? (
-                            <>
-                              <input
-                                value={collectionValue}
-                                onChange={(event) => setCollectionDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
-                                placeholder={ADMIN_UI_STRINGS.orders.collectionTrackingLabel}
-                              />
-                              <button
-                                type="button"
-                                disabled={actionBusyKey === `${item.id}:collection`}
-                                onClick={() => handleCollectionSchedule(selectedOrder.id, item.id)}
-                              >
-                                {ADMIN_UI_STRINGS.orders.requestCollection}
-                              </button>
-                            </>
+                          {canPackagingConfirm ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/confirm-packaging-receipt`)}>
+                              {ADMIN_UI_STRINGS.orders.confirmPackagingReceipt}
+                            </button>
                           ) : null}
-
-                          {canMarkReturnInTransit ? (
+                          {canPackagingReject ? (
                             <button
-                              type="button"
                               className="secondary"
-                              disabled={actionBusyKey === `${item.id}:return_in_transit`}
-                              onClick={() => handleSimpleTransition(selectedOrder.id, item.id, "return_in_transit")}
+                              onClick={() => {
+                                const reason = window.prompt(ADMIN_UI_STRINGS.orders.rejectPackagingPrompt, "ITEM_NOT_RECEIVED") || "";
+                                if (!reason.trim()) return;
+                                void performAction(
+                                  selectedOrder.id,
+                                  item.id,
+                                  `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/reject-packaging-receipt`,
+                                  { reason }
+                                );
+                              }}
                             >
-                              {ADMIN_UI_STRINGS.orders.markReturnInTransit}
+                              {ADMIN_UI_STRINGS.orders.rejectPackagingReceipt}
                             </button>
                           ) : null}
-
-                          {canMarkReturnReceived ? (
+                          {canPackagingStart ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/start-packaging`)}>
+                              {ADMIN_UI_STRINGS.orders.startPackaging}
+                            </button>
+                          ) : null}
+                          {canPackagingVerify ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/verify-package`)}>
+                              {ADMIN_UI_STRINGS.orders.verifyPackage}
+                            </button>
+                          ) : null}
+                          {canPackagingPrint ? (
                             <button
-                              type="button"
-                              className="secondary"
-                              disabled={actionBusyKey === `${item.id}:return_received`}
-                              onClick={() => handleSimpleTransition(selectedOrder.id, item.id, "return_received")}
+                              onClick={() => performAction(
+                                selectedOrder.id,
+                                item.id,
+                                `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/print-label`,
+                                undefined,
+                                { afterSuccess: () => openLabelPreview(selectedOrder.id, item.id) }
+                              )}
                             >
-                              {ADMIN_UI_STRINGS.orders.markReturnReceived}
+                              {ADMIN_UI_STRINGS.orders.printLabel}
                             </button>
                           ) : null}
-
-                          {canMarkRefundCompleted ? (
+                          {canPackagingReprint ? (
                             <button
-                              type="button"
                               className="secondary"
-                              disabled={actionBusyKey === `${item.id}:refund_completed`}
-                              onClick={() => handleSimpleTransition(selectedOrder.id, item.id, "refund_completed")}
+                              onClick={() => {
+                                const reason = window.prompt(ADMIN_UI_STRINGS.orders.reprintLabelPrompt, "LABEL_DAMAGED") || "";
+                                if (!reason.trim()) return;
+                                void performAction(
+                                  selectedOrder.id,
+                                  item.id,
+                                  `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/reprint-label`,
+                                  { reason },
+                                  { afterSuccess: () => openLabelPreview(selectedOrder.id, item.id) }
+                                );
+                              }}
                             >
-                              {ADMIN_UI_STRINGS.orders.markRefundCompleted}
+                              {ADMIN_UI_STRINGS.orders.reprintLabel}
+                            </button>
+                          ) : null}
+                          {canViewLabel ? (
+                            <button className="secondary" onClick={() => openLabelPreview(selectedOrder.id, item.id)}>
+                              {ADMIN_UI_STRINGS.orders.viewLabel}
+                            </button>
+                          ) : null}
+                          {canPackagingPack ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/mark-packed`)}>
+                              {ADMIN_UI_STRINGS.orders.markPacked}
+                            </button>
+                          ) : null}
+                          {canPackagingHandover ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/handover-to-shipping`)}>
+                              {ADMIN_UI_STRINGS.orders.handoverToShipping}
                             </button>
                           ) : null}
 
-                          {!canPack &&
-                          !canCancel &&
-                          !canShip &&
-                          !canUnpackCancel &&
-                          !canScheduleCollection &&
-                          !canMarkReturnInTransit &&
-                          !canMarkReturnReceived &&
-                          !canMarkRefundCompleted ? (
-                            <span className="orders-item-card__actions-empty">No admin action available.</span>
+                          {canShippingConfirm ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/confirm-shipping-receipt`)}>
+                              {ADMIN_UI_STRINGS.orders.confirmShippingReceipt}
+                            </button>
+                          ) : null}
+                          {canShippingReject ? (
+                            <button
+                              className="secondary"
+                              onClick={() => {
+                                const reason = window.prompt(ADMIN_UI_STRINGS.orders.rejectShippingPrompt, "ITEM_NOT_RECEIVED") || "";
+                                if (!reason.trim()) return;
+                                void performAction(
+                                  selectedOrder.id,
+                                  item.id,
+                                  `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/reject-shipping-receipt`,
+                                  { reason }
+                                );
+                              }}
+                            >
+                              {ADMIN_UI_STRINGS.orders.rejectShippingReceipt}
+                            </button>
+                          ) : null}
+                          {canShippingStart ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/start-shipping`)}>
+                              {ADMIN_UI_STRINGS.orders.startShipping}
+                            </button>
+                          ) : null}
+                          {canShippingAssignCourier ? (
+                            <button
+                              onClick={() => {
+                                const courierName = window.prompt(ADMIN_UI_STRINGS.orders.assignCourierPrompt, item.courierName || "") || "";
+                                if (!courierName.trim()) return;
+                                void performAction(
+                                  selectedOrder.id,
+                                  item.id,
+                                  `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/assign-courier`,
+                                  { courierName }
+                                );
+                              }}
+                            >
+                              {item.courierName ? ADMIN_UI_STRINGS.orders.updateCourier : ADMIN_UI_STRINGS.orders.assignCourier}
+                            </button>
+                          ) : null}
+                          {canShippingTracking ? (
+                            <button
+                              onClick={() => {
+                                const trackingNumber = window.prompt(ADMIN_UI_STRINGS.orders.trackingPrompt, item.outboundTrackingNumber || "") || "";
+                                if (!trackingNumber.trim()) return;
+                                void performAction(
+                                  selectedOrder.id,
+                                  item.id,
+                                  `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/tracking`,
+                                  { trackingNumber }
+                                );
+                              }}
+                            >
+                              {item.outboundTrackingNumber ? ADMIN_UI_STRINGS.orders.updateTrackingNumber : ADMIN_UI_STRINGS.orders.enterTrackingNumber}
+                            </button>
+                          ) : null}
+                          {canShippingMarkShipped ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/mark-shipped`)}>
+                              {ADMIN_UI_STRINGS.orders.shipItem}
+                            </button>
+                          ) : null}
+
+                          {canCancellationHandover ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/handover-to-cancellation`)}>
+                              {ADMIN_UI_STRINGS.orders.handoverToCancellation}
+                            </button>
+                          ) : null}
+                          {canCancellationConfirm ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/confirm-cancellation-receipt`)}>
+                              {ADMIN_UI_STRINGS.orders.confirmCancellationReceipt}
+                            </button>
+                          ) : null}
+                          {canCancellationRestock ? (
+                            <button onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/restock-cancelled`)}>
+                              {ADMIN_UI_STRINGS.orders.restockCancelledItem}
+                            </button>
+                          ) : null}
+                          {canCancellationDamaged ? (
+                            <button
+                              className="secondary"
+                              onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/mark-cancelled-damaged`)}
+                            >
+                              {ADMIN_UI_STRINGS.orders.markCancelledDamaged}
+                            </button>
+                          ) : null}
+                          {canCancellationLost ? (
+                            <button
+                              className="secondary"
+                              onClick={() => performAction(selectedOrder.id, item.id, `/api/admin/orders/${encodeURIComponent(selectedOrder.id)}/items/${encodeURIComponent(item.id)}/mark-cancelled-lost`)}
+                            >
+                              {ADMIN_UI_STRINGS.orders.markCancelledLost}
+                            </button>
                           ) : null}
                         </div>
-                      </div>
-                    </article>
-                  );
-                })}
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
-            </section>
-          ) : (
-            <section className="card">Select an order to inspect its items.</section>
-          )}
+            ) : null}
+          </section>
         </div>
-      </section>
+      ) : null}
 
-      <PaginationControls
-        page={page}
-        totalPages={totalPages}
-        total={total}
-        onPrevious={() => setPage((current) => Math.max(1, current - 1))}
-        onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
-        previousLabel={ADMIN_UI_STRINGS.common.previous}
-        nextLabel={ADMIN_UI_STRINGS.common.next}
-      />
+      {totalPages > 1 ? (
+        <PaginationControls
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPrevious={() => setPage((current) => Math.max(1, current - 1))}
+          onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+          previousLabel={ADMIN_UI_STRINGS.common.previous}
+          nextLabel={ADMIN_UI_STRINGS.common.next}
+        />
+      ) : null}
     </ProtectedPage>
   );
 }

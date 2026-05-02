@@ -13,12 +13,17 @@ export type MePayload = {
     description: string;
     systemLevel: string;
     isSystemRole: boolean;
+    visibleMenusConfigured: boolean;
+    visibleMenus: string[];
   }>;
   permissions: string[];
+  visibleMenus: string[];
+  visibleMenusConfigured: boolean;
   systemLevel: string;
 };
 
 export type MenuItem = {
+  id: string;
   href: string;
   label: string;
   anyOf: string[];

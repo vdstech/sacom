@@ -4,7 +4,7 @@ import { evaluateReturnEligibility, shouldAutoDeliverItem } from "./customer-ord
 
 test("return eligibility requires delivered status", () => {
   const result = evaluateReturnEligibility({
-    item: { fulfillmentStatus: "shipped", deliveredAt: null },
+    item: { fulfillmentStatus: "SHIPPED", deliveredAt: null },
     returnPolicy: { returnable: true, windowDays: 7 },
     now: new Date("2026-04-25T12:00:00.000Z"),
   });
@@ -15,7 +15,7 @@ test("return eligibility requires delivered status", () => {
 
 test("return eligibility rejects non-returnable products", () => {
   const result = evaluateReturnEligibility({
-    item: { fulfillmentStatus: "delivered", deliveredAt: "2026-04-24T12:00:00.000Z" },
+    item: { fulfillmentStatus: "DELIVERED", deliveredAt: "2026-04-24T12:00:00.000Z" },
     returnPolicy: { returnable: false, windowDays: 0 },
     now: new Date("2026-04-25T12:00:00.000Z"),
   });
@@ -26,7 +26,7 @@ test("return eligibility rejects non-returnable products", () => {
 
 test("return eligibility rejects expired return windows", () => {
   const result = evaluateReturnEligibility({
-    item: { fulfillmentStatus: "delivered", deliveredAt: "2026-04-01T12:00:00.000Z" },
+    item: { fulfillmentStatus: "DELIVERED", deliveredAt: "2026-04-01T12:00:00.000Z" },
     returnPolicy: { returnable: true, windowDays: 7 },
     now: new Date("2026-04-25T12:00:00.000Z"),
   });
@@ -37,7 +37,7 @@ test("return eligibility rejects expired return windows", () => {
 
 test("return eligibility allows delivered items inside the live window", () => {
   const result = evaluateReturnEligibility({
-    item: { fulfillmentStatus: "delivered", deliveredAt: "2026-04-24T12:00:00.000Z" },
+    item: { fulfillmentStatus: "DELIVERED", deliveredAt: "2026-04-24T12:00:00.000Z" },
     returnPolicy: { returnable: true, windowDays: 7 },
     now: new Date("2026-04-25T12:00:00.000Z"),
   });
@@ -47,18 +47,18 @@ test("return eligibility allows delivered items inside the live window", () => {
   assert.ok(result.returnWindowEndsAt instanceof Date);
 });
 
-test("auto delivery triggers only after shipped items are older than thirty minutes", () => {
+test("auto delivery is disabled for this fulfilment phase", () => {
   assert.equal(
     shouldAutoDeliverItem(
-      { fulfillmentStatus: "shipped", shippedAt: "2026-04-25T11:20:00.000Z" },
+      { fulfillmentStatus: "SHIPPED", shippedAt: "2026-04-25T11:20:00.000Z" },
       new Date("2026-04-25T12:00:00.000Z")
     ),
-    true
+    false
   );
 
   assert.equal(
     shouldAutoDeliverItem(
-      { fulfillmentStatus: "shipped", shippedAt: "2026-04-25T11:40:00.000Z" },
+      { fulfillmentStatus: "SHIPPED", shippedAt: "2026-04-25T11:40:00.000Z" },
       new Date("2026-04-25T12:00:00.000Z")
     ),
     false

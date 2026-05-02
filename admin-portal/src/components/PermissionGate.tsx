@@ -14,6 +14,8 @@ export function PermissionGate({
   children: ReactNode;
 }) {
   const { me } = useAuth();
+  const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
+  if (systemLevel === "SUPER" || systemLevel === "ADMIN") return <>{children}</>;
   const perms = me?.permissions || [];
   if (!hasAnyPermission(perms, anyOf)) return <>{fallback}</>;
   return <>{children}</>;

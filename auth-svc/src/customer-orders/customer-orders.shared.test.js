@@ -3,161 +3,156 @@ import assert from "node:assert/strict";
 import {
   isCustomerCancellableItem,
   isCustomerPackedCancellationRequestable,
+  isCustomerShippingCancellationRequestable,
   isCustomerReturnableItem,
   isPackedItemAdminCancelable,
+  normalizeItemFulfillmentStatus,
   resolveOrderFulfillmentStatus,
   resolveOrderPaymentStatus,
   validateAdminItemStatusTransition,
 } from "./customer-orders.shared.js";
 
-test("customer cancellation is allowed only while processing", () => {
-  assert.equal(isCustomerCancellableItem({ fulfillmentStatus: "processing" }), true);
-  assert.equal(isCustomerCancellableItem({ fulfillmentStatus: "packed" }), false);
-  assert.equal(isCustomerCancellableItem({ fulfillmentStatus: "shipped" }), false);
+test("legacy fulfillment statuses normalize to the BDD state model", () => {
+  assert.equal(normalizeItemFulfillmentStatus("processing"), "RESERVED");
+  assert.equal(normalizeItemFulfillmentStatus("packed"), "PACKED");
+  assert.equal(normalizeItemFulfillmentStatus("shipping_received"), "SHIPPING_RECEIVED");
+  assert.equal(normalizeItemFulfillmentStatus("cancelled"), "CANCEL_RESTOCKED");
 });
 
-test("packed customer cancellation is request-only while packed", () => {
-  assert.equal(isCustomerPackedCancellationRequestable({ fulfillmentStatus: "packed" }), true);
-  assert.equal(isCustomerPackedCancellationRequestable({ fulfillmentStatus: "processing" }), false);
-  assert.equal(isCustomerPackedCancellationRequestable({ fulfillmentStatus: "shipped" }), false);
+test("customer cancellation is allowed before packaging handover begins", () => {
+  assert.equal(isCustomerCancellableItem({ fulfillmentStatus: "RESERVED" }), true);
+  assert.equal(isCustomerCancellableItem({ fulfillmentStatus: "PICKED_FROM_WAREHOUSE" }), true);
+  assert.equal(isCustomerCancellableItem({ fulfillmentStatus: "SHIPPED" }), false);
 });
 
-test("packed item admin cancel is allowed only while packed", () => {
-  assert.equal(isPackedItemAdminCancelable({ fulfillmentStatus: "packed" }), true);
-  assert.equal(isPackedItemAdminCancelable({ fulfillmentStatus: "processing" }), false);
-  assert.equal(isPackedItemAdminCancelable({ fulfillmentStatus: "shipped" }), false);
+test("packed and shipping cancellation requests stay pre-shipment only", () => {
+  assert.equal(isCustomerPackedCancellationRequestable({ fulfillmentStatus: "PACKED" }), true);
+  assert.equal(isCustomerPackedCancellationRequestable({ fulfillmentStatus: "PACKAGING_IN_PROGRESS" }), false);
+  assert.equal(isCustomerShippingCancellationRequestable({ fulfillmentStatus: "SHIPPING_RECEIVED" }), true);
+  assert.equal(isCustomerShippingCancellationRequestable({ fulfillmentStatus: "SHIPPING_IN_PROGRESS" }), true);
+  assert.equal(isCustomerShippingCancellationRequestable({ fulfillmentStatus: "SHIPPED" }), false);
 });
 
-test("customer return request is allowed only after delivery", () => {
-  assert.equal(isCustomerReturnableItem({ fulfillmentStatus: "delivered" }), true);
-  assert.equal(isCustomerReturnableItem({ fulfillmentStatus: "shipped" }), false);
-  assert.equal(isCustomerReturnableItem({ fulfillmentStatus: "return_requested" }), false);
+test("admin packed cancellation stays restricted to packed items", () => {
+  assert.equal(isPackedItemAdminCancelable({ fulfillmentStatus: "PACKED" }), true);
+  assert.equal(isPackedItemAdminCancelable({ fulfillmentStatus: "RESERVED" }), false);
 });
 
-test("shipping requires outbound tracking number", () => {
+test("customer return eligibility helper only considers delivered items", () => {
+  assert.equal(isCustomerReturnableItem({ fulfillmentStatus: "DELIVERED" }), true);
+  assert.equal(isCustomerReturnableItem({ fulfillmentStatus: "SHIPPED" }), false);
+});
+
+test("packaging completion requires verification and printed label", () => {
   assert.deepEqual(
     validateAdminItemStatusTransition({
-      currentStatus: "packed",
-      nextStatus: "shipped",
+      currentStatus: "PACKAGING_IN_PROGRESS",
+      nextStatus: "PACKED",
+      packageVerificationStatus: "PENDING",
+      labelStatus: "NOT_PRINTED",
+    }),
+    {
+      ok: false,
+      error: "Package verification is required before packing is completed",
+    }
+  );
+
+  assert.equal(
+    validateAdminItemStatusTransition({
+      currentStatus: "PACKAGING_IN_PROGRESS",
+      nextStatus: "PACKED",
+      packageVerificationStatus: "VERIFIED",
+      labelStatus: "PRINTED",
+    }).ok,
+    true
+  );
+});
+
+test("shipping requires courier and tracking before mark shipped", () => {
+  assert.deepEqual(
+    validateAdminItemStatusTransition({
+      currentStatus: "SHIPPING_IN_PROGRESS",
+      nextStatus: "SHIPPED",
+      courierName: "",
       outboundTrackingNumber: "",
     }),
     {
       ok: false,
-      error: "Outbound tracking number is required before shipping",
+      error: "Courier must be selected before tracking number is entered",
     }
   );
 
-  assert.equal(
+  assert.deepEqual(
     validateAdminItemStatusTransition({
-      currentStatus: "packed",
-      nextStatus: "shipped",
-      outboundTrackingNumber: "AWB123",
-    }).ok,
-    true
+      currentStatus: "SHIPPING_IN_PROGRESS",
+      nextStatus: "SHIPPED",
+      courierName: "BlueDart",
+      outboundTrackingNumber: "",
+    }),
+    {
+      ok: false,
+      error: "Tracking number is required before marking item as shipped",
+    }
   );
 });
 
-test("shipping is blocked once a packed item has a cancellation request", () => {
+test("packed items with cancellation requests cannot move to shipping", () => {
   assert.deepEqual(
     validateAdminItemStatusTransition({
-      currentStatus: "packed",
-      nextStatus: "shipped",
-      outboundTrackingNumber: "AWB123",
+      currentStatus: "PACKED",
+      nextStatus: "HANDED_TO_SHIPPING",
       cancelRequestedAt: "2026-04-25T10:00:00.000Z",
     }),
     {
       ok: false,
-      error: "Packed items with a cancellation request cannot be shipped",
+      error: "Packed items with a cancellation request cannot move to shipping",
     }
   );
 });
 
-test("collection scheduling requires collection tracking number", () => {
-  assert.deepEqual(
-    validateAdminItemStatusTransition({
-      currentStatus: "return_requested",
-      nextStatus: "collection_scheduled",
-      collectionTrackingNumber: "",
+test("order fulfillment rollup matches the BDD parent state model", () => {
+  assert.equal(
+    resolveOrderFulfillmentStatus({
+      items: [{ fulfillmentStatus: "RESERVED" }, { fulfillmentStatus: "PICKED_FROM_WAREHOUSE" }],
     }),
-    {
-      ok: false,
-      error: "Collection tracking number is required before scheduling collection",
-    }
+    "PARTIALLY_PICKED"
   );
 
   assert.equal(
-    validateAdminItemStatusTransition({
-      currentStatus: "return_requested",
-      nextStatus: "collection_scheduled",
-      collectionTrackingNumber: "RET-456",
-    }).ok,
-    true
+    resolveOrderFulfillmentStatus({
+      items: [{ fulfillmentStatus: "PACKED" }, { fulfillmentStatus: "PACKAGING_IN_PROGRESS" }],
+    }),
+    "PARTIALLY_PACKED"
+  );
+
+  assert.equal(
+    resolveOrderFulfillmentStatus({
+      items: [{ fulfillmentStatus: "SHIPPED" }, { fulfillmentStatus: "CANCEL_RESTOCKED" }],
+    }),
+    "PARTIALLY_CANCELLED"
+  );
+
+  assert.equal(
+    resolveOrderFulfillmentStatus({
+      items: [{ fulfillmentStatus: "CANCEL_RESTOCKED" }, { fulfillmentStatus: "CANCEL_DAMAGED" }],
+    }),
+    "CANCELLED"
   );
 });
 
-test("reverse logistics states win order fulfillment rollup", () => {
-  const order = {
-    items: [
-      { fulfillmentStatus: "shipped" },
-      { fulfillmentStatus: "return_requested" },
-    ],
-  };
+test("payment rollup still preserves payment failed and refund states", () => {
+  assert.equal(
+    resolveOrderPaymentStatus({
+      paymentStatus: "payment_failed",
+      items: [{ fulfillmentStatus: "RESERVED" }],
+    }),
+    "payment_failed"
+  );
 
-  assert.equal(resolveOrderFulfillmentStatus(order), "return_requested");
-});
-
-test("all cancelled items roll up to cancelled order fulfillment", () => {
-  const order = {
-    items: [
-      { fulfillmentStatus: "cancelled" },
-      { fulfillmentStatus: "cancelled" },
-    ],
-  };
-
-  assert.equal(resolveOrderFulfillmentStatus(order), "cancelled");
-});
-
-test("all admin-cancelled items roll up to cancelled by admin", () => {
-  const order = {
-    items: [
-      { fulfillmentStatus: "cancelled_by_admin" },
-      { fulfillmentStatus: "cancelled_by_admin" },
-    ],
-  };
-
-  assert.equal(resolveOrderFulfillmentStatus(order), "cancelled_by_admin");
-});
-
-test("mixed outbound items roll up to packed while unpacked stays admin-only", () => {
-  const order = {
-    items: [
-      { fulfillmentStatus: "unpacked" },
-      { fulfillmentStatus: "shipped" },
-    ],
-  };
-
-  assert.equal(resolveOrderFulfillmentStatus(order), "packed");
-});
-
-test("all delivered items roll up to delivered order fulfillment", () => {
-  const order = {
-    items: [
-      { fulfillmentStatus: "delivered" },
-      { fulfillmentStatus: "delivered" },
-    ],
-  };
-
-  assert.equal(resolveOrderFulfillmentStatus(order), "delivered");
-});
-
-test("payment rollup reflects pending and completed refunds", () => {
   assert.equal(
     resolveOrderPaymentStatus({
       paymentStatus: "paid",
-      items: [
-        { fulfillmentStatus: "return_requested" },
-        { fulfillmentStatus: "shipped" },
-      ],
+      items: [{ fulfillmentStatus: "RETURN_REQUESTED" }, { fulfillmentStatus: "SHIPPED" }],
     }),
     "refund_pending"
   );
@@ -165,32 +160,8 @@ test("payment rollup reflects pending and completed refunds", () => {
   assert.equal(
     resolveOrderPaymentStatus({
       paymentStatus: "paid",
-      items: [
-        { fulfillmentStatus: "cancelled" },
-        { fulfillmentStatus: "shipped" },
-      ],
-    }),
-    "partially_refunded"
-  );
-
-  assert.equal(
-    resolveOrderPaymentStatus({
-      paymentStatus: "paid",
-      items: [
-        { fulfillmentStatus: "cancelled" },
-        { fulfillmentStatus: "refund_completed" },
-      ],
+      items: [{ fulfillmentStatus: "CANCEL_RESTOCKED" }, { fulfillmentStatus: "CANCEL_DAMAGED" }],
     }),
     "refunded"
-  );
-});
-
-test("payment rollup preserves payment failed orders", () => {
-  assert.equal(
-    resolveOrderPaymentStatus({
-      paymentStatus: "payment_failed",
-      items: [{ fulfillmentStatus: "processing" }],
-    }),
-    "payment_failed"
   );
 });

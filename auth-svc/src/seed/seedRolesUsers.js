@@ -1,5 +1,6 @@
 import Permission from "../admin-permissions/admin-permissions.model.js";
 import Role from "../admin-roles/admin-roles.model.js";
+import { ADMIN_MENU_IDS } from "../admin-roles/admin-menu-catalog.js";
 import User from "../admin-users/admin-users.model.js";
 import { hashPassword } from "../security/password.js";
 
@@ -19,18 +20,59 @@ async function ensureSingleRole(name) {
   return roles[0] || null;
 }
 
+async function renameSystemRole(oldName, nextName) {
+  const legacyRole = await Role.findOne({ name: oldName });
+  if (!legacyRole) return;
+
+  const existingTarget = await Role.findOne({ name: nextName });
+  if (!existingTarget) {
+    legacyRole.name = nextName;
+    await legacyRole.save();
+    return;
+  }
+
+  if (String(existingTarget._id) === String(legacyRole._id)) return;
+
+  await User.updateMany(
+    { roles: legacyRole._id },
+    { $addToSet: { roles: existingTarget._id } }
+  );
+  await User.updateMany(
+    { roles: legacyRole._id },
+    { $pull: { roles: legacyRole._id } }
+  );
+  await Role.deleteOne({ _id: legacyRole._id });
+}
+
 export async function seedRoleUsers() {
   const permissions = await Permission.find().select("_id code").lean();
   const permIds = permissions.map((p) => p._id);
-  const orderOperationPermIds = permissions
-    .filter((permission) => ["order:read", "order:write"].includes(permission.code))
+  const getPermIds = (codes) => permissions
+    .filter((permission) => codes.includes(permission.code))
     .map((permission) => permission._id);
+  const orderAdminMenus = ["ordersDashboard", "ordersMetrics", "orders"];
+  const processingManagerMenus = ["ordersDashboard", "processingManager", "orders"];
+  const packagingManagerMenus = ["ordersDashboard", "packagingManager", "orders"];
+  const shippingOperatorMenus = ["ordersDashboard", "shippingOperator", "orders"];
+  const cancellationManagerMenus = ["ordersDashboard", "cancellationManager", "orders"];
+  const returnExchangeManagerMenus = ["ordersDashboard", "returnExchangeManager", "orders"];
+  const inventoryManagerMenus = ["inventory"];
+
+  await renameSystemRole("ORDER_MANAGER", "ORDER_ADMIN");
+  await renameSystemRole("ORDER_PROCESSOR", "PROCESSING_MANAGER");
+  await renameSystemRole("PACKAGING_MANAGER", "PACKAGING_MANAGER");
+  await renameSystemRole("ORDER_OPERATOR", "PROCESSING_MANAGER");
+  await renameSystemRole("SHIPPING_MANAGER", "SHIPPING_OPERATOR");
+  await renameSystemRole("RETURN_MANAGER", "CANCELLATION_MANAGER");
+  await renameSystemRole("RETURN_EXCHANGE_MANAGER", "RETURN_EXCHANGE_HANDLER");
 
   const roleDefs = [
     {
       name: "SUPER_ADMIN",
       description: "System super administrator",
       permissions: permIds,
+      visibleMenus: ADMIN_MENU_IDS,
+      visibleMenusConfigured: false,
       isSystemRole: true,
       systemLevel: "SUPER",
       disabled: false
@@ -39,14 +81,98 @@ export async function seedRoleUsers() {
       name: "ADMIN",
       description: "System administrator",
       permissions: permIds,
+      visibleMenus: ADMIN_MENU_IDS,
+      visibleMenusConfigured: false,
       isSystemRole: true,
       systemLevel: "ADMIN",
       disabled: false
     },
     {
+      name: "ORDER_ADMIN",
+      description: "Supervisory order administrator for pre-shipment cancellation and oversight",
+      permissions: getPermIds(["order:read", "order:admin"]),
+      visibleMenus: orderAdminMenus,
+      visibleMenusConfigured: false,
+      isSystemRole: true,
+      systemLevel: "NONE",
+      disabled: false
+    },
+    {
+      name: "PROCESSING_MANAGER",
+      description: "Picks reserved items and hands them to packaging",
+      permissions: getPermIds(["order:read", "order:processing"]),
+      visibleMenus: processingManagerMenus,
+      visibleMenusConfigured: false,
+      isSystemRole: true,
+      systemLevel: "NONE",
+      disabled: false
+    },
+    {
+      name: "PACKAGING_MANAGER",
+      description: "Receives, packs, labels, and hands items to shipping",
+      permissions: getPermIds(["order:read", "order:packaging"]),
+      visibleMenus: packagingManagerMenus,
+      visibleMenusConfigured: false,
+      isSystemRole: true,
+      systemLevel: "NONE",
+      disabled: false
+    },
+    {
+      name: "SHIPPING_OPERATOR",
+      description: "Receives packed items, assigns courier and tracking, and ships them",
+      permissions: getPermIds(["order:read", "order:shipping"]),
+      visibleMenus: shippingOperatorMenus,
+      visibleMenusConfigured: false,
+      isSystemRole: true,
+      systemLevel: "NONE",
+      disabled: false
+    },
+    {
+      name: "CANCELLATION_MANAGER",
+      description: "Receives cancelled items and decides restock, damaged, or lost outcomes",
+      permissions: getPermIds(["order:read", "order:cancellation"]),
+      visibleMenus: cancellationManagerMenus,
+      visibleMenusConfigured: false,
+      isSystemRole: true,
+      systemLevel: "NONE",
+      disabled: false
+    },
+    {
+      name: "RETURN_EXCHANGE_HANDLER",
+      description: "Investigates customer return and exchange cases and updates their lifecycle",
+      permissions: getPermIds(["order:read", "order:return"]),
+      visibleMenus: returnExchangeManagerMenus,
+      visibleMenusConfigured: false,
+      isSystemRole: true,
+      systemLevel: "NONE",
+      disabled: false
+    },
+    {
+      name: "INVENTORY_MANAGER",
+      description: "Restocks returned and cancelled items in inventory",
+      permissions: getPermIds(["order:read", "inventory:read", "inventory:write"]),
+      visibleMenus: inventoryManagerMenus,
+      visibleMenusConfigured: false,
+      isSystemRole: true,
+      systemLevel: "NONE",
+      disabled: false
+    },
+    {
       name: "ORDER_OPERATIONS",
-      description: "Operations role for order dashboard and fulfillment handling",
-      permissions: orderOperationPermIds,
+      description: "Legacy operations role covering all order lanes",
+      permissions: getPermIds([
+        "order:read",
+        "order:admin",
+        "order:processing",
+        "order:packaging",
+        "order:shipping",
+        "order:cancellation",
+        "order:return",
+        "inventory:read",
+        "inventory:write",
+      ]),
+      visibleMenus: [...orderAdminMenus, "processingManager", "packagingManager", "shippingOperator", "cancellationManager", "returnExchangeManager", "inventory"],
+      visibleMenusConfigured: false,
       isSystemRole: true,
       systemLevel: "NONE",
       disabled: false
@@ -59,9 +185,18 @@ export async function seedRoleUsers() {
 
   const superRole = await ensureSingleRole("SUPER_ADMIN");
   const adminRole = await ensureSingleRole("ADMIN");
-  const orderOpsRole = await ensureSingleRole("ORDER_OPERATIONS");
-  if (!superRole || !adminRole || !orderOpsRole) {
-    throw new Error("Role seeding failed: SUPER_ADMIN, ADMIN, or ORDER_OPERATIONS role missing.");
+  const requiredRoles = [
+    await ensureSingleRole("ORDER_ADMIN"),
+    await ensureSingleRole("PROCESSING_MANAGER"),
+    await ensureSingleRole("PACKAGING_MANAGER"),
+    await ensureSingleRole("SHIPPING_OPERATOR"),
+    await ensureSingleRole("CANCELLATION_MANAGER"),
+    await ensureSingleRole("RETURN_EXCHANGE_HANDLER"),
+    await ensureSingleRole("INVENTORY_MANAGER"),
+    await ensureSingleRole("ORDER_OPERATIONS"),
+  ];
+  if (!superRole || !adminRole || requiredRoles.some((role) => !role)) {
+    throw new Error("Role seeding failed: one or more system roles were not created.");
   }
 
   console.log("✅ Roles seeded:", roleDefs.map((r) => r.name));

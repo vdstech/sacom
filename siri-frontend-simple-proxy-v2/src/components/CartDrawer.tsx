@@ -72,7 +72,9 @@ export function CartDrawer() {
           <div className="cart-drawer__note">
             Cart stays available across browser restarts and is ready to merge with future sign-in.
           </div>
-          <button type="button" className="checkout-button">Checkout Coming Soon</button>
+          <Link href="/checkout" className="checkout-button" onClick={() => setOpen(false)}>
+            Checkout
+          </Link>
         </div>
       </aside>
     </>

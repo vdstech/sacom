@@ -19,7 +19,7 @@ export function computeReturnWindowEndsAt(deliveredAt, windowDays) {
 
 export function evaluateReturnEligibility({ item, returnPolicy, now = new Date() }) {
   const normalizedStatus = normalizeItemFulfillmentStatus(item?.fulfillmentStatus, "");
-  if (normalizedStatus !== "delivered") {
+  if (normalizedStatus !== "DELIVERED") {
     return { returnEligible: false, reason: "not_delivered", returnWindowEndsAt: null };
   }
 
@@ -46,12 +46,7 @@ export function evaluateReturnEligibility({ item, returnPolicy, now = new Date()
 }
 
 export function shouldAutoDeliverItem(item, now = new Date()) {
-  const normalizedStatus = normalizeItemFulfillmentStatus(item?.fulfillmentStatus, "");
-  if (normalizedStatus !== "shipped") return false;
-
-  const shippedAt = asDate(item?.shippedAt);
-  if (!shippedAt) return false;
-
-  const currentTime = asDate(now) || new Date();
-  return currentTime.getTime() - shippedAt.getTime() >= 30 * 60 * 1000;
+  void item;
+  void now;
+  return false;
 }

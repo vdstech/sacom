@@ -70,6 +70,26 @@ export type CustomerOrderItem = {
   returnEligible?: boolean;
   returnEligibilityReason?: string;
   returnWindowEndsAt?: string | null;
+  canRequestReturn?: boolean;
+  canRequestExchange?: boolean;
+  returnExchangeBlockReason?: string;
+  returnExchangeCase?: {
+    caseId: string;
+    kind: "RETURN" | "EXCHANGE";
+    status: string;
+    reason: string;
+    phoneNumber?: string;
+    whatsappNumber?: string;
+    courierName?: string;
+    returnTrackingNumber?: string;
+    createdAt?: string | null;
+    investigationStartedAt?: string | null;
+    acceptedAt?: string | null;
+    rejectedAt?: string | null;
+    trackingUpdatedAt?: string | null;
+    receivedAt?: string | null;
+    placeholderCreatedAt?: string | null;
+  } | null;
   currency?: string;
   listUnitPrice?: number;
   catalogDiscountType?: string;
@@ -298,10 +318,28 @@ export async function cancelCustomerOrderItem(token: string, orderId: string, it
   );
 }
 
-export async function requestCustomerOrderItemReturn(token: string, orderId: string, itemId: string) {
+export async function requestCustomerOrderItemReturn(
+  token: string,
+  orderId: string,
+  itemId: string,
+  payload: { reason: string; phoneNumber?: string; whatsappNumber?: string }
+) {
   return requestCustomer<{ order: CustomerOrder }>(
     `/api/customer/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/return`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify(payload) },
+    token
+  );
+}
+
+export async function requestCustomerOrderItemExchange(
+  token: string,
+  orderId: string,
+  itemId: string,
+  payload: { reason: string; phoneNumber?: string; whatsappNumber?: string }
+) {
+  return requestCustomer<{ order: CustomerOrder }>(
+    `/api/customer/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/exchange`,
+    { method: "POST", body: JSON.stringify(payload) },
     token
   );
 }

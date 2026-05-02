@@ -1,11 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAccount } from "@/components/AccountProvider";
 import { STOREFRONT_STRINGS } from "@/lib/strings";
 
-export default function AccountAuthPage() {
+function AccountAuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { customer, ready, login, signup } = useAccount();
@@ -94,5 +94,13 @@ export default function AccountAuthPage() {
         </div>
       </div>
     </section>
+  );
+}
+
+export default function AccountAuthPage() {
+  return (
+    <Suspense fallback={<section className="section"><div className="section-copy">{STOREFRONT_STRINGS.home.loading}</div></section>}>
+      <AccountAuthPageContent />
+    </Suspense>
   );
 }

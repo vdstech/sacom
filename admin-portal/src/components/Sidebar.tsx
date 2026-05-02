@@ -9,17 +9,31 @@ import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
 export function Sidebar() {
   const { me } = useAuth();
   const pathname = usePathname();
+  const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
+  const isSystemBypass = systemLevel === "SUPER" || systemLevel === "ADMIN";
   const perms = me?.permissions || [];
-  const isOrdersDashboardPath = pathname === "/admin/orders/dashboard" || pathname.startsWith("/admin/orders/dashboard/");
-  const isOrdersMetricsPath = pathname === "/admin/orders/metrics" || pathname.startsWith("/admin/orders/metrics/");
+  const visibleMenus = new Set(
+    !me || isSystemBypass || !me.visibleMenusConfigured
+      ? MENU_ITEMS.map((item) => item.id)
+      : me.visibleMenus || []
+  );
+  const isOrdersSubPath = [
+    "/admin/orders/dashboard",
+    "/admin/orders/metrics",
+    "/admin/orders/processing",
+    "/admin/orders/packaging",
+    "/admin/orders/shipping",
+    "/admin/orders/cancellations",
+    "/admin/orders/returns-exchanges",
+  ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
   return (
     <aside className="sidebar">
       <div className="sidebar-title">{ADMIN_UI_STRINGS.brand.portalTitle}</div>
       <nav className="nav-list">
-        {MENU_ITEMS.filter((item) => hasAnyPermission(perms, item.anyOf)).map((item) => {
+        {MENU_ITEMS.filter((item) => visibleMenus.has(item.id) && (isSystemBypass || hasAnyPermission(perms, item.anyOf))).map((item) => {
           const active = item.href === "/admin/orders"
-            ? !isOrdersDashboardPath && !isOrdersMetricsPath && (pathname === item.href || pathname.startsWith(`${item.href}/`))
+            ? !isOrdersSubPath && (pathname === item.href || pathname.startsWith(`${item.href}/`))
             : pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link key={item.href} href={item.href} className={active ? "nav-link active" : "nav-link"}>

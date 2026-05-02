@@ -8,12 +8,22 @@ import {
   cancelCustomerOrderItem,
   fetchCustomerOrder,
   fetchCustomerOrders,
+  requestCustomerOrderItemExchange,
   requestCustomerOrderItemReturn,
   type CustomerOrder,
   type CustomerOrderItem,
 } from "@/lib/accountApi";
 import { formatMoney } from "@/lib/pricing";
 import { STOREFRONT_STRINGS } from "@/lib/strings";
+
+type RequestKind = "RETURN" | "EXCHANGE";
+
+type RequestFormState = {
+  activeKind: RequestKind | "";
+  reason: string;
+  phoneNumber: string;
+  whatsappNumber: string;
+};
 
 function getOrderDisplayTotal(order: CustomerOrder) {
   return Number(order.grandTotal ?? order.total ?? 0);
@@ -24,7 +34,7 @@ function getItemDisplayTotal(item: CustomerOrderItem) {
 }
 
 function getStateLabel(status?: string) {
-  if (!status) return STOREFRONT_STRINGS.account.orders.states.processing;
+  if (!status) return STOREFRONT_STRINGS.account.orders.states.PLACED;
   return STOREFRONT_STRINGS.account.orders.states[status as keyof typeof STOREFRONT_STRINGS.account.orders.states] || status;
 }
 
@@ -40,18 +50,34 @@ function getOrderStatusLabel(order: CustomerOrder) {
   return getStateLabel(order.fulfillmentStatus || order.status);
 }
 
+function getReturnExchangeStatusLabel(status?: string) {
+  if (!status) return "-";
+  return STOREFRONT_STRINGS.account.orders.returnExchangeStates[
+    status as keyof typeof STOREFRONT_STRINGS.account.orders.returnExchangeStates
+  ] || status;
+}
+
 function canCancelItem(item: CustomerOrderItem, order: CustomerOrder) {
   if (order.paymentStatus === "payment_failed") return false;
-  const status = String(item.fulfillmentStatus || "").toLowerCase();
-  return (status === "processing" || status === "packed") && !item.cancelRequestedAt;
+  const status = String(item.fulfillmentStatus || "").toUpperCase();
+  return [
+    "RESERVED",
+    "PICKED_FROM_WAREHOUSE",
+    "HANDED_TO_PACKAGING",
+    "PACKAGING_RECEIVED",
+    "PACKAGING_IN_PROGRESS",
+    "PACKED",
+    "HANDED_TO_SHIPPING",
+    "SHIPPING_RECEIVED",
+    "SHIPPING_IN_PROGRESS",
+  ].includes(status) && !item.cancelRequestedAt;
 }
 
-function canReturnItem(item: CustomerOrderItem, order: CustomerOrder) {
-  if (order.paymentStatus === "payment_failed") return false;
-  return item.returnEligible === true;
+function canOpenReturnExchange(item: CustomerOrderItem) {
+  return !!item.canRequestReturn && !!item.canRequestExchange && !item.returnExchangeCase;
 }
 
-function formatDate(value?: string) {
+function formatDate(value?: string | null) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
@@ -62,16 +88,44 @@ function getItemActionNote(item: CustomerOrderItem, order: CustomerOrder) {
   if (order.paymentStatus === "payment_failed") {
     return STOREFRONT_STRINGS.checkout.failureSubtitle;
   }
-  const status = String(item.fulfillmentStatus || "").toLowerCase();
-  if (status === "packed" && item.cancelRequestedAt) return STOREFRONT_STRINGS.account.orders.cancellationRequestedNote;
-  if (status === "packed") return STOREFRONT_STRINGS.account.orders.cancelBlockedPacked;
-  if (status === "shipped") return STOREFRONT_STRINGS.account.orders.cancelBlockedShipped;
-  if (status === "delivered" && item.returnEligible === false) {
-    if (item.returnEligibilityReason === "expired") return STOREFRONT_STRINGS.account.orders.returnBlockedExpired;
-    if (item.returnEligibilityReason === "non_returnable") return STOREFRONT_STRINGS.account.orders.returnBlockedNonReturnable;
+  const status = String(item.fulfillmentStatus || "").toUpperCase();
+  if (["CANCEL_REQUESTED", "HANDED_TO_CANCELLATION", "CANCELLATION_RECEIVED"].includes(status)) {
+    return STOREFRONT_STRINGS.account.orders.cancellationReceiptPendingNote;
   }
+  if ((status === "PACKED" || status === "SHIPPING_RECEIVED" || status === "SHIPPING_IN_PROGRESS") && item.cancelRequestedAt) {
+    return STOREFRONT_STRINGS.account.orders.cancellationRequestedNote;
+  }
+  if (["CANCEL_RESTOCKED", "CANCEL_DAMAGED", "CANCEL_LOST", "CANCEL_CLOSED", "CANCELLED_BEFORE_PICKING"].includes(status)) {
+    return STOREFRONT_STRINGS.account.orders.inventoryAcceptanceCancelNote;
+  }
+  if (status === "SHIPPED") return STOREFRONT_STRINGS.account.orders.cancelBlockedShipped;
   return "";
 }
+
+function getReturnExchangeBlockMessage(item: CustomerOrderItem) {
+  if (item.returnExchangeCase) {
+    return STOREFRONT_STRINGS.account.orders.returnBlockedCaseExists;
+  }
+  switch (String(item.returnExchangeBlockReason || "").trim()) {
+    case "not_delivered":
+      return STOREFRONT_STRINGS.account.orders.returnBlockedPendingDelivery;
+    case "non_returnable":
+      return STOREFRONT_STRINGS.account.orders.returnBlockedNonReturnable;
+    case "expired":
+      return STOREFRONT_STRINGS.account.orders.returnBlockedExpired;
+    case "case_exists":
+      return STOREFRONT_STRINGS.account.orders.returnBlockedCaseExists;
+    default:
+      return "";
+  }
+}
+
+const EMPTY_FORM: RequestFormState = {
+  activeKind: "",
+  reason: "",
+  phoneNumber: "",
+  whatsappNumber: "",
+};
 
 export default function OrdersPage() {
   const router = useRouter();
@@ -82,6 +136,7 @@ export default function OrdersPage() {
   const [statusMessage, setStatusMessage] = useState("");
   const [statusTone, setStatusTone] = useState<"neutral" | "error">("neutral");
   const [actionBusyKey, setActionBusyKey] = useState("");
+  const [requestForms, setRequestForms] = useState<Record<string, RequestFormState>>({});
 
   const selectedOrder = useMemo(
     () => orders.find((order) => order.id === selectedOrderId) || orders[0] || null,
@@ -108,7 +163,7 @@ export default function OrdersPage() {
         if (!cancelled) setError(err instanceof Error ? err.message : STOREFRONT_STRINGS.account.orders.fallbackError);
       }
     }
-    load();
+    void load();
     return () => {
       cancelled = true;
     };
@@ -135,17 +190,43 @@ export default function OrdersPage() {
     setSelectedOrderId(nextOrder.id);
   };
 
+  const updateRequestForm = (itemId: string, next: Partial<RequestFormState>) => {
+    setRequestForms((current) => ({
+      ...current,
+      [itemId]: {
+        ...(current[itemId] || EMPTY_FORM),
+        ...next,
+      },
+    }));
+  };
+
+  const closeRequestForm = (itemId: string) => {
+    setRequestForms((current) => ({
+      ...current,
+      [itemId]: EMPTY_FORM,
+    }));
+  };
+
   const handleItemCancel = async (orderId: string, itemId: string) => {
     if (!accessToken || actionBusyKey) return;
     const item = selectedOrder?.items.find((entry) => entry.id === itemId);
-    const wasPacked = String(item?.fulfillmentStatus || "").toLowerCase() === "packed";
+    const wasQueuedCancellation = [
+      "PICKED_FROM_WAREHOUSE",
+      "HANDED_TO_PACKAGING",
+      "PACKAGING_RECEIVED",
+      "PACKAGING_IN_PROGRESS",
+      "PACKED",
+      "HANDED_TO_SHIPPING",
+      "SHIPPING_RECEIVED",
+      "SHIPPING_IN_PROGRESS",
+    ].includes(String(item?.fulfillmentStatus || "").toUpperCase());
     setActionBusyKey(`${itemId}:cancel`);
     setStatusMessage("");
     try {
       const payload = await cancelCustomerOrderItem(accessToken, orderId, itemId);
       updateOrder(payload.order);
       setStatusMessage(
-        wasPacked
+        wasQueuedCancellation
           ? STOREFRONT_STRINGS.account.orders.cancelRequestedSuccess
           : STOREFRONT_STRINGS.account.orders.cancelSuccess
       );
@@ -158,17 +239,40 @@ export default function OrdersPage() {
     }
   };
 
-  const handleItemReturn = async (orderId: string, itemId: string) => {
+  const handleReturnExchangeRequest = async (orderId: string, item: CustomerOrderItem, kind: RequestKind) => {
     if (!accessToken || actionBusyKey) return;
-    setActionBusyKey(`${itemId}:return`);
+    const form = requestForms[item.id] || EMPTY_FORM;
+    const busyKey = `${item.id}:${kind}`;
+    setActionBusyKey(busyKey);
     setStatusMessage("");
     try {
-      const payload = await requestCustomerOrderItemReturn(accessToken, orderId, itemId);
+      const payload = kind === "RETURN"
+        ? await requestCustomerOrderItemReturn(accessToken, orderId, item.id, {
+          reason: form.reason,
+          phoneNumber: form.phoneNumber,
+          whatsappNumber: form.whatsappNumber,
+        })
+        : await requestCustomerOrderItemExchange(accessToken, orderId, item.id, {
+          reason: form.reason,
+          phoneNumber: form.phoneNumber,
+          whatsappNumber: form.whatsappNumber,
+        });
       updateOrder(payload.order);
-      setStatusMessage(STOREFRONT_STRINGS.account.orders.returnSuccess);
+      closeRequestForm(item.id);
+      setStatusMessage(
+        kind === "RETURN"
+          ? STOREFRONT_STRINGS.account.orders.returnSuccess
+          : STOREFRONT_STRINGS.account.orders.exchangeSuccess
+      );
       setStatusTone("neutral");
     } catch (err) {
-      setStatusMessage(err instanceof Error ? err.message : STOREFRONT_STRINGS.account.orders.returnFailed);
+      setStatusMessage(
+        err instanceof Error
+          ? err.message
+          : (kind === "RETURN"
+            ? STOREFRONT_STRINGS.account.orders.returnFailed
+            : STOREFRONT_STRINGS.account.orders.exchangeFailed)
+      );
       setStatusTone("error");
     } finally {
       setActionBusyKey("");
@@ -192,7 +296,7 @@ export default function OrdersPage() {
                 key={order.id}
                 type="button"
                 className={`account-orders__item ${selectedOrder?.id === order.id ? "is-active" : ""}`}
-                onClick={() => loadOrder(order.id)}
+                onClick={() => void loadOrder(order.id)}
               >
                 <strong>{STOREFRONT_STRINGS.account.orders.orderPrefix}{order.id.slice(-6).toUpperCase()}</strong>
                 <span>{formatDate(order.placedAt)}</span>
@@ -234,7 +338,10 @@ export default function OrdersPage() {
                   {selectedOrder.items.map((item, index) => {
                     const actionNote = getItemActionNote(item, selectedOrder);
                     const canCancel = canCancelItem(item, selectedOrder);
-                    const canReturn = canReturnItem(item, selectedOrder);
+                    const requestForm = requestForms[item.id] || EMPTY_FORM;
+                    const activeRequestKind = requestForm.activeKind || null;
+                    const blockMessage = getReturnExchangeBlockMessage(item);
+                    const returnReceivedAt = item.returnExchangeCase?.receivedAt || item.returnReceivedAt || null;
 
                     return (
                       <article key={item.id || `${item.slug || item.title}-${index}`} className="account-orders__line account-orders__line-card">
@@ -256,15 +363,85 @@ export default function OrdersPage() {
                             {item.outboundTrackingNumber ? (
                               <span>{STOREFRONT_STRINGS.account.orders.outboundTracking}: {item.outboundTrackingNumber}</span>
                             ) : null}
-                            {item.collectionTrackingNumber ? (
-                              <span>{STOREFRONT_STRINGS.account.orders.collectionTracking}: {item.collectionTrackingNumber}</span>
+                            {item.returnExchangeCase?.courierName ? (
+                              <span>{STOREFRONT_STRINGS.account.orders.courier}: {item.returnExchangeCase.courierName}</span>
                             ) : null}
-                            {item.deliveredAt ? (
+                            {item.returnExchangeCase?.returnTrackingNumber ? (
+                              <span>{STOREFRONT_STRINGS.account.orders.returnTracking}: {item.returnExchangeCase.returnTrackingNumber}</span>
+                            ) : null}
+                            {returnReceivedAt ? (
+                              <span>{STOREFRONT_STRINGS.account.orders.returnReceivedAt}: {formatDate(returnReceivedAt)}</span>
+                            ) : null}
+                            {!item.returnExchangeCase && item.deliveredAt ? (
                               <span>{STOREFRONT_STRINGS.account.orders.deliveredAt}: {formatDate(item.deliveredAt)}</span>
                             ) : null}
                           </div>
 
                           {actionNote ? <p className="section-copy">{actionNote}</p> : null}
+                          {item.returnExchangeCase ? (
+                            <div className="section-copy">
+                              {STOREFRONT_STRINGS.account.orders.activeCaseLabel}: {getReturnExchangeStatusLabel(item.returnExchangeCase.status)}
+                            </div>
+                          ) : null}
+                          {!item.returnExchangeCase && blockMessage && !canOpenReturnExchange(item) ? (
+                            <p className="section-copy">{blockMessage}</p>
+                          ) : null}
+
+                          {activeRequestKind ? (
+                            <div className="account-orders__request-form">
+                              <label className="account-orders__request-field">
+                                <span>
+                                  {activeRequestKind === "RETURN"
+                                    ? STOREFRONT_STRINGS.account.orders.returnReasonLabel
+                                    : STOREFRONT_STRINGS.account.orders.exchangeReasonLabel}
+                                </span>
+                                <textarea
+                                  className="account-orders__request-textarea"
+                                  rows={3}
+                                  value={requestForm.reason}
+                                  onChange={(event) => updateRequestForm(item.id, { reason: event.target.value })}
+                                />
+                              </label>
+                              <label className="account-orders__request-field">
+                                <span>{STOREFRONT_STRINGS.account.orders.phoneNumberLabel}</span>
+                                <input
+                                  value={requestForm.phoneNumber}
+                                  onChange={(event) => updateRequestForm(item.id, { phoneNumber: event.target.value })}
+                                />
+                              </label>
+                              <label className="account-orders__request-field">
+                                <span>{STOREFRONT_STRINGS.account.orders.whatsappNumberLabel}</span>
+                                <input
+                                  value={requestForm.whatsappNumber}
+                                  onChange={(event) => updateRequestForm(item.id, { whatsappNumber: event.target.value })}
+                                />
+                              </label>
+                              <p className="section-copy">{STOREFRONT_STRINGS.account.orders.contactHint}</p>
+                              <div className="account-orders__request-actions">
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  disabled={actionBusyKey === `${item.id}:${activeRequestKind}`}
+                                  onClick={() => void handleReturnExchangeRequest(selectedOrder.id, item, activeRequestKind)}
+                                >
+                                  {actionBusyKey === `${item.id}:${activeRequestKind}`
+                                    ? (activeRequestKind === "RETURN"
+                                      ? STOREFRONT_STRINGS.account.orders.returnBusy
+                                      : STOREFRONT_STRINGS.account.orders.exchangeBusy)
+                                    : (activeRequestKind === "RETURN"
+                                      ? STOREFRONT_STRINGS.account.orders.submitReturn
+                                      : STOREFRONT_STRINGS.account.orders.submitExchange)}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => closeRequestForm(item.id)}
+                                >
+                                  {STOREFRONT_STRINGS.account.addresses.actions.cancel}
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="account-orders__line-actions">
@@ -273,25 +450,30 @@ export default function OrdersPage() {
                               type="button"
                               className="secondary-button"
                               disabled={actionBusyKey === `${item.id}:cancel`}
-                              onClick={() => handleItemCancel(selectedOrder.id, item.id)}
+                              onClick={() => void handleItemCancel(selectedOrder.id, item.id)}
                             >
                               {actionBusyKey === `${item.id}:cancel`
                                 ? STOREFRONT_STRINGS.account.orders.cancelBusy
                                 : STOREFRONT_STRINGS.account.orders.cancel}
                             </button>
                           ) : null}
-
-                          {canReturn ? (
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              disabled={actionBusyKey === `${item.id}:return`}
-                              onClick={() => handleItemReturn(selectedOrder.id, item.id)}
-                            >
-                              {actionBusyKey === `${item.id}:return`
-                                ? STOREFRONT_STRINGS.account.orders.returnBusy
-                                : STOREFRONT_STRINGS.account.orders.return}
-                            </button>
+                          {canOpenReturnExchange(item) && !activeRequestKind ? (
+                            <>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => updateRequestForm(item.id, { activeKind: "RETURN" })}
+                              >
+                                {STOREFRONT_STRINGS.account.orders.return}
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => updateRequestForm(item.id, { activeKind: "EXCHANGE" })}
+                              >
+                                {STOREFRONT_STRINGS.account.orders.exchange}
+                              </button>
+                            </>
                           ) : null}
                         </div>
                       </article>

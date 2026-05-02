@@ -43,8 +43,17 @@ export async function seedCategoryPermissions() {
     { code: "inventory:read", description: "View inventory" },
     { code: "inventory:write", description: "Update inventory" },
     { code: "order:read", description: "View orders" },
-    { code: "order:write", description: "Create/update orders" },
-    { code: "order:delete", description: "Delete/cancel orders" },
+    { code: "order:admin", description: "Cancel pre-shipment items as an order admin" },
+    { code: "order:processing", description: "Manage the processing manager picking queue" },
+    { code: "order:packaging", description: "Manage the packaging manager queue and handovers" },
+    { code: "order:shipping", description: "Manage the shipping operator queue and shipments" },
+    { code: "order:cancellation", description: "Manage cancellation handovers and stock outcomes" },
+    { code: "order:override", description: "Override order workflows and route cancellations" },
+    { code: "order:cancel", description: "Route manager-triggered cancellations for pre-shipment items" },
+    { code: "order:cancel:manage", description: "Receive and validate pre-shipment cancellation items" },
+    { code: "order:pack", description: "Pack order items, print labels, and send them to shipping" },
+    { code: "order:ship", description: "Ship outbound orders and update tracking" },
+    { code: "order:return", description: "Manage customer return collection and receipt" },
   ];
 
   const leafPerms = [];
