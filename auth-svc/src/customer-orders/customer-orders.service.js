@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import mongoose from "mongoose";
 import CustomerAddress from "../customer-addresses/customer-addresses.model.js";
 import CustomerOrder from "./customer-orders.model.js";
@@ -13,6 +14,8 @@ import AuditLog from "./customer-orders.audit-log.model.js";
 import OrderShipment from "./customer-orders.shipment.model.js";
 import ShippingLabel from "./customer-orders.shipping-label.model.js";
 import StorefrontCustomer from "../customer-auth/customer-auth.model.js";
+import ExchangeCoupon from "./customer-orders.exchange-coupon.model.js";
+import NotificationPlaceholder from "./customer-orders.notification-placeholder.model.js";
 import {
   buildOrderItemId,
   CANCELLATION_QUEUE_STATUSES,
@@ -123,6 +126,10 @@ async function loadCustomerAddress(customerId, addressId) {
 
   if (!address) throw createHttpError("Address not found", 404);
   return address;
+}
+
+function buildExchangeCouponCode() {
+  return `EXC-${crypto.randomBytes(6).toString("hex").toUpperCase()}`;
 }
 
 async function loadCart(cartToken) {
@@ -307,6 +314,12 @@ async function buildPreparedOrder(cart) {
   };
 }
 
+export async function prepareCustomerOrderFromCart({ cartToken }) {
+  const cart = await loadCart(cartToken);
+  const prepared = await buildPreparedOrder(cart);
+  return { cart, prepared };
+}
+
 function getOrderItemOrThrow(order, itemId) {
   const items = Array.isArray(order?.items) ? order.items : [];
   const item = items.find((entry, index) => buildOrderItemId(entry, index) === itemId);
@@ -384,6 +397,120 @@ async function createAuditLog({
     remarks,
     metadata,
   });
+}
+
+export async function finalizePreparedCustomerOrder({
+  customerId,
+  cart,
+  prepared,
+  addressId,
+  paymentStatus: requestedPaymentStatus = "paid",
+  couponSnapshot = null,
+  actorId = null,
+  actorRole = "CUSTOMER",
+  clearCartOnSuccess = true,
+}) {
+  const address = await loadCustomerAddress(customerId, addressId);
+  const addressSnapshot = buildAddressSnapshot(address);
+  const appliedOperations = [];
+  let order = null;
+
+  const paymentStatus = normalizeString(requestedPaymentStatus, "paid").toLowerCase() === "payment_failed"
+    ? "payment_failed"
+    : "paid";
+  const couponCode = normalizeString(couponSnapshot?.couponCode);
+  const couponAppliedAmount = Math.max(0, asNumber(couponSnapshot?.appliedAmount, 0));
+  const couponForfeitedAmount = Math.max(0, asNumber(couponSnapshot?.forfeitedAmount, 0));
+  const couponDiscountTotal = couponCode ? couponAppliedAmount : 0;
+  const subtotal = Math.max(0, asNumber(prepared?.subtotal, 0));
+  const catalogDiscountTotal = Math.max(0, asNumber(prepared?.discountTotal, 0));
+  const shippingTotal = Math.max(0, asNumber(prepared?.shippingTotal, 0));
+  const taxTotal = Math.max(0, asNumber(prepared?.taxTotal, 0));
+  const sourceGrandTotal = Math.max(0, asNumber(prepared?.grandTotal, 0));
+  const grandTotal = Math.max(0, sourceGrandTotal - couponAppliedAmount);
+
+  try {
+    if (paymentStatus !== "payment_failed") {
+      for (const operation of prepared.stockOperations || []) {
+        await reserveStockEntry(operation);
+        appliedOperations.push(operation);
+      }
+    }
+
+    order = await CustomerOrder.create({
+      customer: customerId,
+      status: "PLACED",
+      paymentStatus,
+      fulfillmentStatus: "PLACED",
+      currency: "INR",
+      pricingVersion: 1,
+      couponCode,
+      couponDiscountTotal,
+      couponAppliedAmount,
+      couponForfeitedAmount,
+      subtotal,
+      discountTotal: catalogDiscountTotal + couponDiscountTotal,
+      shippingTotal,
+      taxTotal,
+      grandTotal,
+      total: grandTotal,
+      itemCount: Math.max(0, asNumber(prepared?.itemCount, 0)),
+      paymentReference: "",
+      addressSnapshot,
+      items: prepared?.items || [],
+      placedAt: new Date(),
+    });
+
+    if (paymentStatus !== "payment_failed") {
+      for (const item of order.items || []) {
+        const operation = getValidatedStockOperation(item, "Invalid stock operation for reservation ledger");
+        await createInventoryLedgerEntry({
+          item,
+          orderId: order._id,
+          movementType: "RESERVE",
+          quantity: operation.quantity,
+          availableChange: -operation.quantity,
+          reservedChange: operation.quantity,
+          referenceType: "ORDER",
+          referenceId: buildOrderItemId(item),
+        });
+      }
+
+      if (clearCartOnSuccess && cart) {
+        cart.items = [];
+        cart.lastSeenAt = new Date();
+        await cart.save();
+      }
+    }
+
+    await createAuditLog({
+      orderId: order._id,
+      userId: actorId,
+      role: actorRole,
+      action: "ORDER_CREATED",
+      newStatus: paymentStatus === "payment_failed" ? "PAYMENT_FAILED" : "PLACED",
+      metadata: {
+        couponCode,
+        couponAppliedAmount,
+        couponForfeitedAmount,
+        paymentStatus,
+      },
+    });
+
+    return order.toObject();
+  } catch (error) {
+    for (const operation of [...appliedOperations].reverse()) {
+      try {
+        await releaseReservedStockEntry(operation);
+      } catch {}
+    }
+    if (order?._id && mongoose.isValidObjectId(order._id)) {
+      try {
+        await CustomerOrder.deleteOne({ _id: order._id });
+      } catch {}
+    }
+    throw error;
+  }
 }
 
 async function ensureNoPendingHandover(itemId) {
@@ -557,6 +684,10 @@ export async function listReturnExchangeCases({ kind = "", status = "", search =
       return shapeReturnExchangeCaseForAdmin({
         ...caseDoc,
         productName: normalizeString(item?.title),
+        coupon: caseDoc?.couponId ? {
+          id: String(caseDoc.couponId),
+          generatedAt: caseDoc.couponGeneratedAt || null,
+        } : null,
         customer: customer ? sanitizeCustomerContact(customer) : null,
         order: mappedOrder ? {
           id: String(mappedOrder._id || ""),
@@ -712,80 +843,14 @@ async function updateShipmentRecord(item, orderId, userId) {
 }
 
 export async function createCustomerOrderFromCart({ customerId, cartToken, addressId, paymentStatus: requestedPaymentStatus = "paid" }) {
-  const address = await loadCustomerAddress(customerId, addressId);
-  const cart = await loadCart(cartToken);
-  const prepared = await buildPreparedOrder(cart);
-  const addressSnapshot = buildAddressSnapshot(address);
-  const appliedOperations = [];
-  let order = null;
-
-  const paymentStatus = normalizeString(requestedPaymentStatus, "paid").toLowerCase() === "payment_failed"
-    ? "payment_failed"
-    : "paid";
-
-  try {
-    if (paymentStatus !== "payment_failed") {
-      for (const operation of prepared.stockOperations) {
-        await reserveStockEntry(operation);
-        appliedOperations.push(operation);
-      }
-    }
-
-    order = await CustomerOrder.create({
-      customer: customerId,
-      status: "PLACED",
-      paymentStatus,
-      fulfillmentStatus: "PLACED",
-      currency: "INR",
-      pricingVersion: 1,
-      couponCode: "",
-      subtotal: prepared.subtotal,
-      discountTotal: prepared.discountTotal,
-      shippingTotal: prepared.shippingTotal,
-      taxTotal: prepared.taxTotal,
-      grandTotal: prepared.grandTotal,
-      total: prepared.grandTotal,
-      itemCount: prepared.itemCount,
-      paymentReference: "",
-      addressSnapshot,
-      items: prepared.items,
-      placedAt: new Date(),
-    });
-
-    if (paymentStatus !== "payment_failed") {
-      for (const item of order.items || []) {
-        const operation = getValidatedStockOperation(item, "Invalid stock operation for reservation ledger");
-        await createInventoryLedgerEntry({
-          item,
-          orderId: order._id,
-          movementType: "RESERVE",
-          quantity: operation.quantity,
-          availableChange: -operation.quantity,
-          reservedChange: operation.quantity,
-          referenceType: "ORDER",
-          referenceId: buildOrderItemId(item),
-        });
-      }
-
-      cart.items = [];
-      cart.lastSeenAt = new Date();
-      await cart.save();
-    }
-
-    return order.toObject();
-  } catch (error) {
-    for (const operation of [...appliedOperations].reverse()) {
-      try {
-        await releaseReservedStockEntry(operation);
-      } catch {}
-    }
-    if (order?._id && mongoose.isValidObjectId(order._id)) {
-      try {
-        await CustomerOrder.deleteOne({ _id: order._id });
-      } catch {}
-    }
-    throw error;
-  }
+  const { cart, prepared } = await prepareCustomerOrderFromCart({ cartToken });
+  return finalizePreparedCustomerOrder({
+    customerId,
+    cart,
+    prepared,
+    addressId,
+    paymentStatus: requestedPaymentStatus,
+  });
 }
 
 export async function cancelCustomerOrderAndRestock({ customerId, orderId }) {
@@ -1097,6 +1162,9 @@ export async function receiveReturnExchangeCase({ caseId, actorId, actorRole = "
 
 export async function createReturnExchangePlaceholder({ caseId, actorId, actorRole = "RETURN_EXCHANGE_HANDLER" }) {
   const { caseDoc } = await getReturnExchangeCaseWithOrder(caseId);
+  if (normalizeReturnExchangeKind(caseDoc.kind) === "EXCHANGE") {
+    throw createHttpError("Use coupon generation for exchange cases", 409);
+  }
   const previousStatus = normalizeReturnExchangeStatus(caseDoc.status);
   const nextStatus = getPlaceholderPendingStatusForKind(caseDoc.kind);
   const validation = validateReturnExchangePlaceholder({
@@ -1119,6 +1187,108 @@ export async function createReturnExchangePlaceholder({ caseId, actorId, actorRo
     oldStatus: previousStatus,
     newStatus: nextStatus,
     metadata: { caseId: String(caseDoc._id), kind: caseDoc.kind },
+  });
+
+  return caseDoc.toObject();
+}
+
+export async function generateExchangeCoupon({ caseId, actorId, actorRole = "RETURN_EXCHANGE_HANDLER" }) {
+  const { caseDoc, order, item } = await getReturnExchangeCaseWithOrder(caseId);
+  const previousStatus = normalizeReturnExchangeStatus(caseDoc.status);
+
+  if (normalizeReturnExchangeKind(caseDoc.kind) !== "EXCHANGE") {
+    throw createHttpError("Coupon generation is supported only for exchange cases", 409);
+  }
+  if (previousStatus === "EXCHANGE_REJECTED") {
+    throw createHttpError("Coupon cannot be generated for rejected exchange", 409);
+  }
+  if (previousStatus !== "EXCHANGE_RECEIVED") {
+    throw createHttpError("Coupon can be generated only after exchange item is received", 409);
+  }
+  if (caseDoc.couponId) {
+    throw createHttpError("Coupon has already been generated for this exchange case", 409);
+  }
+
+  const eligiblePaidAmount = asNumber(item?.lineGrandTotal, NaN);
+  if (!Number.isFinite(eligiblePaidAmount)) {
+    throw createHttpError("Eligible paid amount is missing", 409);
+  }
+  if (eligiblePaidAmount <= 0) {
+    throw createHttpError("Coupon value must be greater than zero", 409);
+  }
+
+  const existingCoupon = await ExchangeCoupon.findOne({ exchangeCaseId: caseDoc._id }).select("_id").lean();
+  if (existingCoupon) {
+    throw createHttpError("Coupon has already been generated for this exchange case", 409);
+  }
+
+  const generatedAt = new Date();
+  const validUntil = new Date(generatedAt);
+  validUntil.setUTCFullYear(validUntil.getUTCFullYear() + 1);
+
+  let coupon = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      coupon = await ExchangeCoupon.create({
+        code: buildExchangeCouponCode(),
+        customerId: caseDoc.customerId,
+        exchangeCaseId: caseDoc._id,
+        orderId: order._id,
+        orderItemId: caseDoc.orderItemId,
+        valueAmount: eligiblePaidAmount,
+        currency: normalizeString(order?.currency, "INR"),
+        status: "ACTIVE",
+        validFrom: generatedAt,
+        validUntil,
+      });
+      break;
+    } catch (error) {
+      if (error?.code !== 11000 || attempt === 4) throw error;
+    }
+  }
+
+  if (!coupon) {
+    throw createHttpError("Unable to generate coupon", 500);
+  }
+
+  await NotificationPlaceholder.create([
+    {
+      customerId: caseDoc.customerId,
+      couponId: coupon._id,
+      channel: "EMAIL",
+      status: "PENDING",
+      payload: { code: coupon.code },
+    },
+    {
+      customerId: caseDoc.customerId,
+      couponId: coupon._id,
+      channel: "SMS",
+      status: "PENDING",
+      payload: { code: coupon.code },
+    },
+  ]);
+
+  caseDoc.status = "EXCHANGE_COUPON_GENERATED";
+  caseDoc.couponId = coupon._id;
+  caseDoc.couponGeneratedAt = generatedAt;
+  caseDoc.couponGeneratedByUserId = getActorId(actorId);
+  await caseDoc.save();
+
+  await createAuditLog({
+    orderId: caseDoc.orderId,
+    itemId: caseDoc.orderItemId,
+    userId: actorId,
+    role: actorRole,
+    action: "EXCHANGE_COUPON_GENERATED",
+    oldStatus: previousStatus,
+    newStatus: "EXCHANGE_COUPON_GENERATED",
+    metadata: {
+      caseId: String(caseDoc._id),
+      couponId: String(coupon._id),
+      couponCode: coupon.code,
+      couponValue: eligiblePaidAmount,
+      validUntil,
+    },
   });
 
   return caseDoc.toObject();

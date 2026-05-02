@@ -1,14 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "@/components/AccountProvider";
 import { useStoreCart } from "@/components/StoreProvider";
 import {
+  abandonCheckoutSession,
+  applyCheckoutCoupon,
   createCustomerAddress,
-  createCustomerOrder,
+  createCheckoutSession,
+  confirmCheckoutSession,
+  fetchCheckoutSession,
   fetchCustomerAddresses,
+  removeCheckoutCoupon,
+  type CustomerCheckoutSession,
   type CustomerAddress,
 } from "@/lib/accountApi";
 import { formatMoney } from "@/lib/pricing";
@@ -50,6 +56,11 @@ export default function CheckoutConfirmationPage() {
   const [savingAddress, setSavingAddress] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [showAddressForm, setShowAddressForm] = useState(false);
+  const [checkoutSession, setCheckoutSession] = useState<CustomerCheckoutSession | null>(null);
+  const [loadingSession, setLoadingSession] = useState(true);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponBusy, setCouponBusy] = useState(false);
+  const completedSessionRef = useRef(false);
 
   useEffect(() => {
     if (!ready) return;
@@ -87,9 +98,47 @@ export default function CheckoutConfirmationPage() {
   const authPending = !ready || accountLoading;
   const isRedirectingToAuth = ready && !customer;
   const payLabel = useMemo(
-    () => STOREFRONT_STRINGS.checkout.payButton(formatMoney(Number(cart?.subtotal || 0))),
-    [cart?.subtotal]
+    () => STOREFRONT_STRINGS.checkout.payButton(formatMoney(Number(checkoutSession?.payableAmount ?? cart?.subtotal ?? 0))),
+    [checkoutSession?.payableAmount, cart?.subtotal]
   );
+
+  useEffect(() => {
+    if (!ready || !customer || !accessToken || !cart?.cartToken || !hasCartItems) {
+      setCheckoutSession(null);
+      setLoadingSession(false);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadSession() {
+      setLoadingSession(true);
+      try {
+        const cartToken = cart?.cartToken;
+        if (!cartToken) return;
+        const payload = await createCheckoutSession(accessToken, { cartToken });
+        if (cancelled) return;
+        setCheckoutSession(payload.session);
+        setCouponCode(payload.session.coupon?.code || "");
+      } catch (err) {
+        if (!cancelled) {
+          setStatusMessage(err instanceof Error ? err.message : STOREFRONT_STRINGS.checkout.placeOrderFailed);
+          setStatusTone("error");
+        }
+      } finally {
+        if (!cancelled) setLoadingSession(false);
+      }
+    }
+
+    void loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, customer, accessToken, cart?.cartToken, hasCartItems]);
+
+  useEffect(() => () => {
+    if (!accessToken || !checkoutSession?.id || completedSessionRef.current || checkoutSession.status !== "ACTIVE") return;
+    void abandonCheckoutSession(accessToken, checkoutSession.id).catch(() => {});
+  }, [accessToken, checkoutSession?.id, checkoutSession?.status]);
 
   const saveAddress = async (event: FormEvent) => {
     event.preventDefault();
@@ -115,26 +164,72 @@ export default function CheckoutConfirmationPage() {
     }
   };
 
+  const refreshSession = async (sessionId: string) => {
+    if (!accessToken) return;
+    const payload = await fetchCheckoutSession(accessToken, sessionId);
+    setCheckoutSession(payload.session);
+    setCouponCode(payload.session.coupon?.code || "");
+  };
+
+  const applyCoupon = async () => {
+    if (!accessToken || !checkoutSession?.id || couponBusy) return;
+    setCouponBusy(true);
+    setStatusMessage("");
+    try {
+      const payload = await applyCheckoutCoupon(accessToken, checkoutSession.id, couponCode);
+      setCheckoutSession(payload.session);
+      setCouponCode(payload.session.coupon?.code || couponCode);
+      setStatusMessage(STOREFRONT_STRINGS.checkout.couponApplied);
+      setStatusTone("neutral");
+    } catch (err) {
+      setStatusMessage(err instanceof Error ? err.message : STOREFRONT_STRINGS.checkout.placeOrderFailed);
+      setStatusTone("error");
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+
+  const clearCoupon = async () => {
+    if (!accessToken || !checkoutSession?.id || couponBusy) return;
+    setCouponBusy(true);
+    setStatusMessage("");
+    try {
+      const payload = await removeCheckoutCoupon(accessToken, checkoutSession.id);
+      setCheckoutSession(payload.session);
+      setCouponCode("");
+      setStatusMessage(STOREFRONT_STRINGS.checkout.couponRemoved);
+      setStatusTone("neutral");
+    } catch (err) {
+      setStatusMessage(err instanceof Error ? err.message : STOREFRONT_STRINGS.checkout.placeOrderFailed);
+      setStatusTone("error");
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+
   const placeOrder = async (paymentStatus: "paid" | "payment_failed") => {
-    if (!accessToken || placingOrder || !selectedAddressId || !cart?.cartToken) return;
+    if (!accessToken || placingOrder || !selectedAddressId || !checkoutSession?.id) return;
 
     setPlacingOrder(true);
     setStatusMessage("");
     try {
-      const payload = await createCustomerOrder(accessToken, {
-        cartToken: cart.cartToken,
+      const payload = await confirmCheckoutSession(accessToken, checkoutSession.id, {
         addressId: selectedAddressId,
         paymentStatus,
       });
-      if (paymentStatus !== "payment_failed") {
-        await refreshCart();
-        setOpen(false);
-      }
+      completedSessionRef.current = true;
+      await refreshCart();
+      setOpen(false);
       router.push(`/checkout/success/${payload.order.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : STOREFRONT_STRINGS.checkout.placeOrderFailed;
       setStatusMessage(message);
       setStatusTone("error");
+      if (checkoutSession?.id) {
+        try {
+          await refreshSession(checkoutSession.id);
+        } catch {}
+      }
     } finally {
       setPlacingOrder(false);
     }
@@ -152,7 +247,7 @@ export default function CheckoutConfirmationPage() {
         {cartError ? <div className="status-banner status-banner--error">{cartError}</div> : null}
         {statusMessage ? <div className={`status-banner ${statusTone === "error" ? "status-banner--error" : ""}`}>{statusMessage}</div> : null}
 
-        {authPending || cartLoading || loadingAddresses ? <div className="section-copy">{STOREFRONT_STRINGS.product.loading}</div> : null}
+        {authPending || cartLoading || loadingAddresses || loadingSession ? <div className="section-copy">{STOREFRONT_STRINGS.product.loading}</div> : null}
 
         {!authPending && !isRedirectingToAuth && !cartLoading && !hasCartItems ? (
           <div className="coming-soon">
@@ -228,6 +323,26 @@ export default function CheckoutConfirmationPage() {
 
             <aside className="checkout-summary">
               <div className="section-kicker">{STOREFRONT_STRINGS.checkout.summaryTitle}</div>
+              <div className="account-auth__field">
+                <span>{STOREFRONT_STRINGS.checkout.couponLabel}</span>
+                <div className="account-addresses__actions">
+                  <input
+                    value={couponCode}
+                    placeholder={STOREFRONT_STRINGS.checkout.couponPlaceholder}
+                    onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+                    disabled={couponBusy || !!checkoutSession?.coupon}
+                  />
+                  {!checkoutSession?.coupon ? (
+                    <button type="button" className="secondary-button" disabled={couponBusy || !couponCode.trim()} onClick={() => void applyCoupon()}>
+                      {STOREFRONT_STRINGS.checkout.couponApply}
+                    </button>
+                  ) : (
+                    <button type="button" className="secondary-button" disabled={couponBusy} onClick={() => void clearCoupon()}>
+                      {STOREFRONT_STRINGS.checkout.couponRemove}
+                    </button>
+                  )}
+                </div>
+              </div>
               {(cart?.items || []).map((item) => (
                 <div key={item.itemId} className="checkout-summary__line">
                   <span>{item.productTitle} x {item.quantity}</span>
@@ -238,19 +353,36 @@ export default function CheckoutConfirmationPage() {
                 <span>Subtotal</span>
                 <strong>{formatMoney(Number(cart?.subtotal || 0))}</strong>
               </div>
+              {checkoutSession?.coupon ? (
+                <div className="checkout-summary__row">
+                  <span>{checkoutSession.coupon.code}</span>
+                  <strong>-{formatMoney(Number(checkoutSession.couponAppliedAmount || 0))}</strong>
+                </div>
+              ) : null}
+              <div className="checkout-summary__row">
+                <span>Payable</span>
+                <strong>{formatMoney(Number(checkoutSession?.payableAmount ?? cart?.subtotal ?? 0))}</strong>
+              </div>
+              {Number(checkoutSession?.forfeitureAmount || 0) > 0 ? (
+                <div className="checkout-line__warning">{STOREFRONT_STRINGS.checkout.couponForfeitureWarning}</div>
+              ) : null}
               <div className="checkout-summary__actions">
                 <button
                   type="button"
                   className="checkout-button"
-                  disabled={!selectedAddressId || placingOrder}
+                  disabled={!selectedAddressId || placingOrder || !checkoutSession}
                   onClick={() => placeOrder("paid")}
                 >
-                  {placingOrder ? STOREFRONT_STRINGS.account.auth.submit.busy : payLabel}
+                  {placingOrder
+                    ? STOREFRONT_STRINGS.account.auth.submit.busy
+                    : Number(checkoutSession?.payableAmount || 0) === 0
+                      ? STOREFRONT_STRINGS.checkout.confirmOrderButton
+                      : payLabel}
                 </button>
                 <button
                   type="button"
                   className="secondary-button"
-                  disabled={!selectedAddressId || placingOrder}
+                  disabled={!selectedAddressId || placingOrder || !checkoutSession}
                   onClick={() => placeOrder("payment_failed")}
                 >
                   {placingOrder ? STOREFRONT_STRINGS.account.auth.submit.busy : STOREFRONT_STRINGS.checkout.paymentFailedButton}

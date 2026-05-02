@@ -18,7 +18,7 @@ export const RETURN_EXCHANGE_STATUSES = [
   "EXCHANGE_REJECTED",
   "EXCHANGE_IN_TRANSIT",
   "EXCHANGE_RECEIVED",
-  "EXCHANGE_COUPON_PLACEHOLDER_PENDING",
+  "EXCHANGE_COUPON_GENERATED",
 ];
 
 const TRANSITIONS = {
@@ -34,8 +34,8 @@ const TRANSITIONS = {
   EXCHANGE_ACCEPTED: ["EXCHANGE_IN_TRANSIT"],
   EXCHANGE_REJECTED: [],
   EXCHANGE_IN_TRANSIT: ["EXCHANGE_RECEIVED"],
-  EXCHANGE_RECEIVED: ["EXCHANGE_COUPON_PLACEHOLDER_PENDING"],
-  EXCHANGE_COUPON_PLACEHOLDER_PENDING: [],
+  EXCHANGE_RECEIVED: ["EXCHANGE_COUPON_GENERATED"],
+  EXCHANGE_COUPON_GENERATED: [],
 };
 
 export function isReturnExchangeKind(value) {
@@ -82,7 +82,7 @@ export function getReceivedStatusForKind(kind) {
 
 export function getPlaceholderPendingStatusForKind(kind) {
   return normalizeReturnExchangeKind(kind) === "EXCHANGE"
-    ? "EXCHANGE_COUPON_PLACEHOLDER_PENDING"
+    ? "EXCHANGE_COUPON_GENERATED"
     : "RETURN_REFUND_PLACEHOLDER_PENDING";
 }
 
@@ -99,7 +99,7 @@ export function hasFullAdminVisibility(status) {
     "EXCHANGE_REJECTED",
     "EXCHANGE_IN_TRANSIT",
     "EXCHANGE_RECEIVED",
-    "EXCHANGE_COUPON_PLACEHOLDER_PENDING",
+    "EXCHANGE_COUPON_GENERATED",
   ].includes(normalizeReturnExchangeStatus(status));
 }
 
@@ -288,6 +288,9 @@ export function shapeReturnExchangeCaseForAdmin(caseDoc) {
     receivedByUserId: caseDoc?.receivedByUserId ? String(caseDoc.receivedByUserId) : "",
     placeholderCreatedAt: caseDoc?.placeholderCreatedAt || null,
     placeholderCreatedByUserId: caseDoc?.placeholderCreatedByUserId ? String(caseDoc.placeholderCreatedByUserId) : "",
+    coupon: caseDoc?.coupon || null,
+    couponGeneratedAt: caseDoc?.couponGeneratedAt || null,
+    couponGeneratedByUserId: caseDoc?.couponGeneratedByUserId ? String(caseDoc.couponGeneratedByUserId) : "",
     createdAt: caseDoc?.createdAt || null,
     updatedAt: caseDoc?.updatedAt || null,
   };

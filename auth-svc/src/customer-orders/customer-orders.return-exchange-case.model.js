@@ -37,6 +37,9 @@ const ReturnExchangeCaseSchema = new mongoose.Schema(
     receivedByUserId: { type: mongoose.Schema.Types.ObjectId, default: null, ref: "User" },
     placeholderCreatedAt: { type: Date, default: null },
     placeholderCreatedByUserId: { type: mongoose.Schema.Types.ObjectId, default: null, ref: "User" },
+    couponId: { type: mongoose.Schema.Types.ObjectId, default: null, ref: "ExchangeCoupon", index: true },
+    couponGeneratedAt: { type: Date, default: null },
+    couponGeneratedByUserId: { type: mongoose.Schema.Types.ObjectId, default: null, ref: "User" },
   },
   {
     timestamps: true,

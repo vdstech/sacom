@@ -30,6 +30,7 @@ import {
   acceptReturnExchangeCase,
   confirmCancellationReceipt,
   createReturnExchangePlaceholder,
+  generateExchangeCoupon,
   handoverOrderItemToCancellation,
   handoverOrderItemToPackaging,
   handoverOrderItemToShipping,
@@ -989,5 +990,16 @@ export async function returnExchangeCreatePlaceholder(req, res) {
       actorId: getActorId(req),
     }),
     "Failed to create return or exchange placeholder"
+  );
+}
+
+export async function returnExchangeGenerateCoupon(req, res) {
+  return withReturnExchangeCase(
+    res,
+    generateExchangeCoupon({
+      caseId: req.params.caseId,
+      actorId: getActorId(req),
+    }),
+    "Failed to generate exchange coupon"
   );
 }

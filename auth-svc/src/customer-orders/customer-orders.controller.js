@@ -8,6 +8,15 @@ import {
   requestCustomerOrderItemExchange,
   requestCustomerOrderItemReturn,
 } from "./customer-orders.service.js";
+import {
+  abandonCheckoutSession,
+  applyCheckoutCoupon,
+  confirmCheckoutSession,
+  createCheckoutSession,
+  getCheckoutSession,
+  listCustomerCoupons,
+  removeCheckoutCoupon,
+} from "./customer-orders.checkout.service.js";
 import { buildOrderItemId, mapOrder, normalizePaymentStatus } from "./customer-orders.shared.js";
 import { evaluateReturnEligibility } from "./customer-orders.eligibility.js";
 
@@ -71,6 +80,7 @@ function decorateMappedOrder(order, returnPolicyMap, caseMap) {
         trackingUpdatedAt: caseDoc.trackingUpdatedAt || null,
         receivedAt: caseDoc.receivedAt || null,
         placeholderCreatedAt: caseDoc.placeholderCreatedAt || null,
+        couponGeneratedAt: caseDoc.couponGeneratedAt || null,
       } : null;
       const blockReason = hasCase ? "case_exists" : (eligibility.reason || "");
       return {
@@ -125,6 +135,98 @@ export async function createOrder(req, res) {
     return res.status(201).json({ order: decorateMappedOrder(mappedOrder, returnPolicyMap, caseMap) });
   } catch (err) {
     return res.status(err.statusCode || 500).json({ error: err.message || "Unable to create order" });
+  }
+}
+
+export async function listCoupons(req, res) {
+  try {
+    const payload = await listCustomerCoupons({ customerId: req.customerAuth.customerId });
+    return res.json(payload);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message || "Unable to load coupons" });
+  }
+}
+
+export async function createSession(req, res) {
+  try {
+    const payload = await createCheckoutSession({
+      customerId: req.customerAuth.customerId,
+      cartToken: req.body?.cartToken,
+    });
+    return res.status(201).json(payload);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message || "Unable to create checkout session" });
+  }
+}
+
+export async function getSession(req, res) {
+  try {
+    const payload = await getCheckoutSession({
+      customerId: req.customerAuth.customerId,
+      sessionId: req.params.sessionId,
+    });
+    return res.json(payload);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message || "Unable to load checkout session" });
+  }
+}
+
+export async function applySessionCoupon(req, res) {
+  try {
+    const payload = await applyCheckoutCoupon({
+      customerId: req.customerAuth.customerId,
+      sessionId: req.params.sessionId,
+      couponCode: req.body?.couponCode,
+      idempotencyKey: req.headers["idempotency-key"],
+    });
+    return res.json(payload);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message || "Unable to apply coupon" });
+  }
+}
+
+export async function removeSessionCoupon(req, res) {
+  try {
+    const payload = await removeCheckoutCoupon({
+      customerId: req.customerAuth.customerId,
+      sessionId: req.params.sessionId,
+    });
+    return res.json(payload);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message || "Unable to remove coupon" });
+  }
+}
+
+export async function abandonSession(req, res) {
+  try {
+    const payload = await abandonCheckoutSession({
+      customerId: req.customerAuth.customerId,
+      sessionId: req.params.sessionId,
+    });
+    return res.json(payload);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message || "Unable to abandon checkout session" });
+  }
+}
+
+export async function confirmSession(req, res) {
+  try {
+    const payload = await confirmCheckoutSession({
+      customerId: req.customerAuth.customerId,
+      sessionId: req.params.sessionId,
+      addressId: req.body?.addressId,
+      paymentStatus: req.body?.paymentStatus,
+      idempotencyKey: req.headers["idempotency-key"],
+    });
+    const mappedOrder = mapOrder(payload.order);
+    const returnPolicyMap = await buildReturnPolicyMap([mappedOrder]);
+    const caseMap = await buildReturnExchangeCaseMap([mappedOrder]);
+    return res.json({
+      ...payload,
+      order: decorateMappedOrder(mappedOrder, returnPolicyMap, caseMap),
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message || "Unable to confirm checkout session" });
   }
 }
 

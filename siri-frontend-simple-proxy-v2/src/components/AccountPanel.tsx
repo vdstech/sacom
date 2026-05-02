@@ -9,6 +9,7 @@ export function AccountPanel({ onNavigate }: { onNavigate: () => void }) {
 
   const guestLinks = [
     { href: "/account/orders", label: STOREFRONT_STRINGS.navigation.account.orders },
+    { href: "/account/coupons", label: STOREFRONT_STRINGS.navigation.account.coupons },
     { href: "/account/wishlist", label: STOREFRONT_STRINGS.navigation.account.wishlist },
     { href: "/account/addresses", label: STOREFRONT_STRINGS.navigation.account.savedAddresses },
   ];
@@ -24,6 +25,7 @@ export function AccountPanel({ onNavigate }: { onNavigate: () => void }) {
           <div className="account-panel__divider" />
           <div className="account-panel__links">
             <Link href="/account/orders" onClick={onNavigate}>{STOREFRONT_STRINGS.navigation.account.orders}</Link>
+            <Link href="/account/coupons" onClick={onNavigate}>{STOREFRONT_STRINGS.navigation.account.coupons}</Link>
             <Link href="/account/wishlist" onClick={onNavigate}>{STOREFRONT_STRINGS.navigation.account.wishlist}</Link>
             <Link href="/account/addresses" onClick={onNavigate}>{STOREFRONT_STRINGS.navigation.account.savedAddresses}</Link>
           </div>

@@ -89,6 +89,7 @@ export type CustomerOrderItem = {
     trackingUpdatedAt?: string | null;
     receivedAt?: string | null;
     placeholderCreatedAt?: string | null;
+    couponGeneratedAt?: string | null;
   } | null;
   currency?: string;
   listUnitPrice?: number;
@@ -137,9 +138,36 @@ export type CustomerOrder = {
   currency?: string;
   pricingVersion?: number;
   couponCode?: string;
+  couponDiscountTotal?: number;
+  couponAppliedAmount?: number;
+  couponForfeitedAmount?: number;
   paymentReference?: string;
   addressSnapshot?: CustomerOrderAddressSnapshot | null;
   items: CustomerOrderItem[];
+};
+
+export type CustomerCoupon = {
+  id: string;
+  code: string;
+  valueAmount: number;
+  currency?: string;
+  status: string;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  usedAt?: string | null;
+};
+
+export type CustomerCheckoutSession = {
+  id: string;
+  cartToken: string;
+  status: string;
+  currency?: string;
+  subtotal: number;
+  couponAppliedAmount: number;
+  payableAmount: number;
+  forfeitureAmount: number;
+  expiresAt?: string | null;
+  coupon?: CustomerCoupon | null;
 };
 
 function getBaseUrl() {
@@ -200,6 +228,13 @@ async function requestCustomer<T>(path: string, init?: RequestInit, token?: stri
   }
 
   return (await response.json()) as T;
+}
+
+function createIdempotencyKey(prefix: string) {
+  const suffix = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${prefix}-${suffix}`;
 }
 
 export async function customerSignup(input: { name: string; email: string; password: string; phone?: string }) {
@@ -290,6 +325,70 @@ export async function createCustomerOrder(token: string, payload: { cartToken: s
   return requestCustomer<{ order: CustomerOrder }>(
     "/api/customer/orders",
     { method: "POST", body: JSON.stringify(payload) },
+    token
+  );
+}
+
+export async function fetchCustomerCoupons(token: string) {
+  return requestCustomer<{ coupons: CustomerCoupon[] }>("/api/customer/orders/coupons", undefined, token);
+}
+
+export async function createCheckoutSession(token: string, payload: { cartToken: string }) {
+  return requestCustomer<{ session: CustomerCheckoutSession }>(
+    "/api/customer/orders/checkout/session",
+    { method: "POST", body: JSON.stringify(payload) },
+    token
+  );
+}
+
+export async function fetchCheckoutSession(token: string, sessionId: string) {
+  return requestCustomer<{ session: CustomerCheckoutSession }>(
+    `/api/customer/orders/checkout/session/${encodeURIComponent(sessionId)}`,
+    undefined,
+    token
+  );
+}
+
+export async function applyCheckoutCoupon(token: string, sessionId: string, couponCode: string) {
+  return requestCustomer<{ session: CustomerCheckoutSession }>(
+    `/api/customer/orders/checkout/session/${encodeURIComponent(sessionId)}/coupon/apply`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": createIdempotencyKey("coupon-apply") },
+      body: JSON.stringify({ couponCode }),
+    },
+    token
+  );
+}
+
+export async function removeCheckoutCoupon(token: string, sessionId: string) {
+  return requestCustomer<{ session: CustomerCheckoutSession }>(
+    `/api/customer/orders/checkout/session/${encodeURIComponent(sessionId)}/coupon`,
+    { method: "DELETE" },
+    token
+  );
+}
+
+export async function abandonCheckoutSession(token: string, sessionId: string) {
+  return requestCustomer<{ session: { id: string; status: string } }>(
+    `/api/customer/orders/checkout/session/${encodeURIComponent(sessionId)}/abandon`,
+    { method: "POST" },
+    token
+  );
+}
+
+export async function confirmCheckoutSession(
+  token: string,
+  sessionId: string,
+  payload: { addressId: string; paymentStatus?: "paid" | "payment_failed" }
+) {
+  return requestCustomer<{ order: CustomerOrder; session: { id: string; status: string } }>(
+    `/api/customer/orders/checkout/session/${encodeURIComponent(sessionId)}/confirm`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": createIdempotencyKey("checkout-confirm") },
+      body: JSON.stringify(payload),
+    },
     token
   );
 }

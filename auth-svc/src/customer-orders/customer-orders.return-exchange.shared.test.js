@@ -44,6 +44,10 @@ test("return and exchange state transitions cover the allowed lifecycle only", (
     { ok: true }
   );
   assert.deepEqual(
+    validateReturnExchangeTransition(getReceivedStatusForKind("EXCHANGE"), getPlaceholderPendingStatusForKind("EXCHANGE")),
+    { ok: true }
+  );
+  assert.deepEqual(
     validateReturnExchangeTransition(getRequestedStatusForKind("EXCHANGE"), getAcceptedStatusForKind("EXCHANGE")),
     {
       ok: false,
@@ -275,6 +279,23 @@ test("admin visibility keeps requested cases redacted and reveals full detail af
   });
   assert.equal(accepted.phoneNumber, "123");
   assert.equal(hasFullAdminVisibility("RETURN_ACCEPTED"), true);
+});
+
+test("admin visibility includes coupon generation metadata for completed exchange coupon cases", () => {
+  const generated = shapeReturnExchangeCaseForAdmin({
+    _id: "case-4",
+    kind: "EXCHANGE",
+    status: "EXCHANGE_COUPON_GENERATED",
+    orderItemId: "item-4",
+    productName: "Organza Saree",
+    reason: "Need alternate size",
+    couponGeneratedAt: "2026-05-02T10:00:00.000Z",
+    coupon: { id: "coupon-1", generatedAt: "2026-05-02T10:00:00.000Z" },
+  });
+
+  assert.equal(generated.status, "EXCHANGE_COUPON_GENERATED");
+  assert.equal(generated.couponGeneratedAt, "2026-05-02T10:00:00.000Z");
+  assert.deepEqual(generated.coupon, { id: "coupon-1", generatedAt: "2026-05-02T10:00:00.000Z" });
 });
 
 test("queue filtering supports kind, status, search, and returned summary fields", () => {

@@ -62,6 +62,11 @@ type ReturnExchangeCase = {
   trackingUpdatedAt?: string | null;
   receivedAt?: string | null;
   placeholderCreatedAt?: string | null;
+  couponGeneratedAt?: string | null;
+  coupon?: {
+    id?: string;
+    generatedAt?: string | null;
+  } | null;
 };
 
 type PaginatedResponse = {
@@ -93,7 +98,7 @@ const STATUS_LABELS: Record<string, string> = {
   EXCHANGE_REJECTED: "Exchange Rejected",
   EXCHANGE_IN_TRANSIT: "Exchange In Transit",
   EXCHANGE_RECEIVED: "Exchange Received",
-  EXCHANGE_COUPON_PLACEHOLDER_PENDING: "Coupon Placeholder Pending",
+  EXCHANGE_COUPON_GENERATED: "Exchange Coupon Generated",
 };
 
 function formatDate(value?: string | null) {
@@ -332,6 +337,7 @@ export default function ReturnExchangeOrdersPage() {
                       <div><strong>Tracking Updated:</strong> {formatDate(selectedCase.trackingUpdatedAt)}</div>
                       <div><strong>Received At:</strong> {formatDate(selectedCase.receivedAt)}</div>
                       <div><strong>Placeholder Created:</strong> {formatDate(selectedCase.placeholderCreatedAt)}</div>
+                      <div><strong>Coupon Generated:</strong> {formatDate(selectedCase.couponGeneratedAt || selectedCase.coupon?.generatedAt)}</div>
                       {selectedCase.decisionNote ? <div><strong>Decision Note:</strong> {selectedCase.decisionNote}</div> : null}
                       {selectedCase.courierName ? <div><strong>Courier:</strong> {selectedCase.courierName}</div> : null}
                       {selectedCase.returnTrackingNumber ? <div><strong>Tracking Number:</strong> {selectedCase.returnTrackingNumber}</div> : null}
@@ -405,12 +411,21 @@ export default function ReturnExchangeOrdersPage() {
                     </button>
                   ) : null}
 
-                  {selectedCase.status === `${selectedCase.kind}_RECEIVED` ? (
+                  {selectedCase.kind === "RETURN" && selectedCase.status === "RETURN_RECEIVED" ? (
                     <button
                       disabled={!!actionBusy}
                       onClick={() => void performAction(`/api/admin/orders/returns-exchanges/${encodeURIComponent(selectedCase.caseId)}/create-placeholder`)}
                     >
                       Create Placeholder
+                    </button>
+                  ) : null}
+
+                  {selectedCase.kind === "EXCHANGE" && selectedCase.status === "EXCHANGE_RECEIVED" ? (
+                    <button
+                      disabled={!!actionBusy}
+                      onClick={() => void performAction(`/api/admin/orders/returns-exchanges/${encodeURIComponent(selectedCase.caseId)}/generate-coupon`)}
+                    >
+                      Generate Coupon
                     </button>
                   ) : null}
                 </div>

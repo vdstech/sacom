@@ -340,6 +340,9 @@ export function mapOrder(order) {
     currency: normalizeString(order?.currency, "INR"),
     pricingVersion: asNumber(order?.pricingVersion, 1),
     couponCode: normalizeString(order?.couponCode),
+    couponDiscountTotal: asNumber(order?.couponDiscountTotal, 0),
+    couponAppliedAmount: asNumber(order?.couponAppliedAmount, 0),
+    couponForfeitedAmount: asNumber(order?.couponForfeitedAmount, 0),
     paymentReference: normalizeString(order?.paymentReference),
     addressSnapshot: order?.addressSnapshot || null,
     items: (Array.isArray(order?.items) ? order.items : []).map((item, index) => ({

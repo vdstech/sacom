@@ -47,6 +47,7 @@ router.post("/returns-exchanges/:caseId/reject", requireAuth, requiresPermission
 router.post("/returns-exchanges/:caseId/tracking", requireAuth, requiresPermission(["order:read", "order:return"]), controller.returnExchangeUpdateTracking);
 router.post("/returns-exchanges/:caseId/receive", requireAuth, requiresPermission(["order:read", "order:return"]), controller.returnExchangeReceive);
 router.post("/returns-exchanges/:caseId/create-placeholder", requireAuth, requiresPermission(["order:read", "order:return"]), controller.returnExchangeCreatePlaceholder);
+router.post("/returns-exchanges/:caseId/generate-coupon", requireAuth, requiresPermission(["order:read", "order:return"]), controller.returnExchangeGenerateCoupon);
 router.get("/:id", requireAuth, requiresPermission("order:read"), controller.getOrder);
 
 export default router;
