@@ -1,16 +1,6 @@
 import Permission from "../admin-permissions/admin-permissions.model.js";
 import Role from "../admin-roles/admin-roles.model.js";
 
-export const DEPRECATED_PERMISSION_CODES = [
-  "category:write",
-  "product:write",
-  "inventory:write",
-  "order:write",
-  "order:delete",
-  "order:pack",
-  "order:ship",
-];
-
 export const PHASE1_PERMISSION_DEFINITIONS = [
   { code: "user:read", description: "View users" },
   { code: "user:write", description: "Create/update users" },

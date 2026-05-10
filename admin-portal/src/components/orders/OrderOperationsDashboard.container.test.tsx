@@ -41,7 +41,7 @@ describe("OrderOperationsDashboard container", () => {
       refreshAccessToken: vi.fn(),
       me: {
         permissions: ["order:read", "order:shipping"],
-        roles: [{ name: "SHIPPING_MANAGER" }],
+        roles: [{ name: "SHIPPING_OPERATOR" }],
         systemLevel: "NONE",
         user: { systemLevel: "NONE" },
       },
