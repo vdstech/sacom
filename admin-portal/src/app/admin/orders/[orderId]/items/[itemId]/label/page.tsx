@@ -28,6 +28,7 @@ type OrderItemDoc = {
 
 type OrderDoc = {
   id: string;
+  displayId?: string;
   addressSnapshot?: AddressSnapshot | null;
   items: OrderItemDoc[];
 };
@@ -127,7 +128,7 @@ export default function OrderItemLabelPage() {
             </div>
 
             <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-              <div><strong>Order ID</strong><div>{order.id}</div></div>
+              <div><strong>Order ID</strong><div>{order.displayId || order.id}</div></div>
               <div><strong>SKU / Stock Key</strong><div>{item.stockKey || "-"}</div></div>
               <div><strong>Quantity</strong><div>{item.quantity}</div></div>
             </div>

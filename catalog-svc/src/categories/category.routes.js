@@ -13,8 +13,8 @@ router.get("/:id/filter-config", ctrl.getCategoryFilterConfig);
 router.get("/:id", ctrl.getCategoryById);
 
 // WRITE (admin)
-router.post("/", requireAuth, requiresPermission("category:write"), validateCreate, ctrl.createCategory);
-router.put("/:id", requireAuth, requiresPermission("category:write"), validateUpdate, ctrl.updateCategory);
+router.post("/", requireAuth, requiresPermission("category:create"), validateCreate, ctrl.createCategory);
+router.put("/:id", requireAuth, requiresPermission("category:update"), validateUpdate, ctrl.updateCategory);
 router.delete("/:id", requireAuth, requiresPermission("category:delete"), ctrl.deleteCategory);
 
 export default router;

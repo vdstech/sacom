@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ProtectedPage } from "@/components/ProtectedPage";
 import { PaginationControls } from "@/components/PaginationControls";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
+import { buildOrderPermissionAccess } from "@/lib/orderAccess";
 import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
 
 const PAGE_SIZE = 25;
@@ -33,6 +34,7 @@ type ReturnExchangeCase = {
   } | null;
   order?: {
     id?: string;
+    displayId?: string;
     placedAt?: string | null;
     paymentStatus?: string;
     fulfillmentStatus?: string;
@@ -129,7 +131,13 @@ function canShowFullDetails(caseDoc?: ReturnExchangeCase | null) {
 }
 
 export default function ReturnExchangeOrdersPage() {
-  const { accessToken, refreshAccessToken } = useAuth();
+  const { accessToken, refreshAccessToken, me } = useAuth();
+  const permissions = me?.permissions || [];
+  const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
+  const orderAccess = useMemo(
+    () => buildOrderPermissionAccess(permissions, systemLevel),
+    [permissions, systemLevel]
+  );
   const [activeTab, setActiveTab] = useState<CaseKind>("RETURN");
   const [cases, setCases] = useState<ReturnExchangeCase[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState("");
@@ -190,8 +198,9 @@ export default function ReturnExchangeOrdersPage() {
   }, [searchInput]);
 
   useEffect(() => {
+    if (!orderAccess.returns) return;
     void load();
-  }, [activeTab, page, search, accessToken]);
+  }, [activeTab, page, search, accessToken, orderAccess]);
 
   const performAction = async (endpoint: string, body?: Record<string, unknown>) => {
     if (!selectedCase || actionBusy) return;
@@ -214,6 +223,10 @@ export default function ReturnExchangeOrdersPage() {
 
   return (
     <ProtectedPage anyOf={["order:return"]}>
+      {!orderAccess.returns ? (
+        <div className="card">Forbidden</div>
+      ) : (
+        <>
       <section className="card row" style={{ justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div>
           <div className="orders-detail__eyebrow">{ADMIN_UI_STRINGS.orders.summaryReturnExchangeQueue}</div>
@@ -314,7 +327,7 @@ export default function ReturnExchangeOrdersPage() {
 
                     <div className="card" style={{ display: "grid", gap: 6 }}>
                       <div className="orders-detail__eyebrow">Order Details</div>
-                      <div><strong>Order ID:</strong> {selectedCase.order?.id || "-"}</div>
+                      <div><strong>Order ID:</strong> {selectedCase.order?.displayId || selectedCase.order?.id || "-"}</div>
                       <div><strong>Placed At:</strong> {formatDate(selectedCase.order?.placedAt)}</div>
                       <div><strong>Payment Status:</strong> {selectedCase.order?.paymentStatus || "-"}</div>
                       <div><strong>Fulfillment Status:</strong> {selectedCase.order?.fulfillmentStatus || "-"}</div>
@@ -446,6 +459,8 @@ export default function ReturnExchangeOrdersPage() {
           nextLabel={ADMIN_UI_STRINGS.common.next}
         />
       ) : null}
+        </>
+      )}
     </ProtectedPage>
   );
 }

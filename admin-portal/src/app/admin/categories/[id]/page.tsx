@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ProtectedPage } from "@/components/ProtectedPage";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
+import { hasAnyPermission } from "@/lib/permissions";
 import {
   buildHierarchyTree,
   getDescendantIds,
@@ -111,7 +112,7 @@ function toConfig(
 export default function CategoryDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { accessToken, refreshAccessToken } = useAuth();
+  const { accessToken, refreshAccessToken, me } = useAuth();
 
   const [category, setCategory] = useState<CategoryDoc | null>(null);
   const [categories, setCategories] = useState<CategoryDoc[]>([]);
@@ -206,6 +207,9 @@ export default function CategoryDetailPage() {
   );
   const validationErrors = useMemo(() => buildFilterConfigValidationErrors(draftConfig), [draftConfig]);
   const validationWarnings = useMemo(() => buildFilterConfigValidationWarnings(draftConfig), [draftConfig]);
+  const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
+  const isSystemBypass = systemLevel === "SUPER" || systemLevel === "ADMIN";
+  const canUpdate = isSystemBypass || hasAnyPermission(me?.permissions || [], ["category:update"]);
 
   const toggleExpanded = (nodeId: string) => {
     setExpandedIds((prev) => {
@@ -355,6 +359,7 @@ export default function CategoryDetailPage() {
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!canUpdate) return;
     if (validationErrors.length) {
       setError(validationErrors.join("; "));
       return;
@@ -383,7 +388,7 @@ export default function CategoryDetailPage() {
   };
 
   return (
-    <ProtectedPage anyOf={["category:read", "category:write", "category:delete"]}>
+    <ProtectedPage anyOf={["category:read", "category:create", "category:update", "category:delete"]}>
       <section className="card">
         <h1>Category Detail</h1>
         {error ? <div className="error">{error}</div> : null}
@@ -391,121 +396,123 @@ export default function CategoryDetailPage() {
           <div>Loading...</div>
         ) : (
           <form onSubmit={onSubmit} className="row" style={{ flexDirection: "column", alignItems: "stretch" }}>
-            <label>
-              Name
-              <input value={name} onChange={(e) => onNameChange(e.target.value)} required />
-            </label>
-            <label>
-              Slug
-              <div className="row" style={{ gap: 8 }}>
-                <input required value={slug} onChange={(e) => onSlugChange(e.target.value)} style={{ flex: 1 }} />
-                <button type="button" className="secondary" onClick={resetSlugToAuto}>Reset Auto</button>
-              </div>
-            </label>
-            <label>
-              Description
-              <textarea value={description} onChange={(e) => setDescription(e.target.value)} />
-            </label>
-            <label>
-              Parent Category
-              <div className="card" style={{ padding: 8 }}>
-                <div
-                  className="row"
-                  style={{
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "6px 8px",
-                    borderRadius: 8,
-                    background: selectedParentSafe ? "transparent" : "rgba(34, 197, 94, 0.15)",
-                  }}
-                >
-                  <strong>ROOT (No Parent)</strong>
-                  <button type="button" className={selectedParentSafe ? "secondary" : ""} onClick={() => setSelectedParent("")}>
-                    {selectedParentSafe ? "Select Parent" : "Selected"}
+            <fieldset disabled={!canUpdate} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 16 }}>
+              <label>
+                Name
+                <input value={name} onChange={(e) => onNameChange(e.target.value)} required />
+              </label>
+              <label>
+                Slug
+                <div className="row" style={{ gap: 8 }}>
+                  <input required value={slug} onChange={(e) => onSlugChange(e.target.value)} style={{ flex: 1 }} />
+                  <button type="button" className="secondary" onClick={resetSlugToAuto}>Reset Auto</button>
+                </div>
+              </label>
+              <label>
+                Description
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} />
+              </label>
+              <label>
+                Parent Category
+                <div className="card" style={{ padding: 8 }}>
+                  <div
+                    className="row"
+                    style={{
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      background: selectedParentSafe ? "transparent" : "rgba(34, 197, 94, 0.15)",
+                    }}
+                  >
+                    <strong>ROOT (No Parent)</strong>
+                    <button type="button" className={selectedParentSafe ? "secondary" : ""} onClick={() => setSelectedParent("")}>
+                      {selectedParentSafe ? "Select Parent" : "Selected"}
+                    </button>
+                  </div>
+                  <div style={{ marginTop: 8, display: "grid", gap: 4 }}>{tree.map(renderTreeNode)}</div>
+                </div>
+              </label>
+              <label>
+                Sort Order
+                <input type="number" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value || 0))} />
+              </label>
+              <label>
+                <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Active
+              </label>
+
+              <section className="card" style={{ display: "grid", gap: 10 }}>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <strong>Product Fields</strong>
+                  <button type="button" className="secondary" onClick={() => addField("product")} disabled={productFieldDrafts.length >= MAX_PRODUCT_FIELDS}>
+                    Add Field
                   </button>
                 </div>
-                <div style={{ marginTop: 8, display: "grid", gap: 4 }}>{tree.map(renderTreeNode)}</div>
-              </div>
-            </label>
-            <label>
-              Sort Order
-              <input type="number" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value || 0))} />
-            </label>
-            <label>
-              <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Active
-            </label>
+                <div style={{ fontSize: 12, opacity: 0.8 }}>
+                  {`Fields: ${productFieldDrafts.length}/${MAX_PRODUCT_FIELDS}`}
+                </div>
 
-            <section className="card" style={{ display: "grid", gap: 10 }}>
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                <strong>Product Fields</strong>
-                <button type="button" className="secondary" onClick={() => addField("product")} disabled={productFieldDrafts.length >= MAX_PRODUCT_FIELDS}>
-                  Add Field
-                </button>
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>
-                {`Fields: ${productFieldDrafts.length}/${MAX_PRODUCT_FIELDS}`}
-              </div>
+                {!productFieldDrafts.length ? <div style={{ opacity: 0.75 }}>No product fields configured.</div> : null}
 
-              {!productFieldDrafts.length ? <div style={{ opacity: 0.75 }}>No product fields configured.</div> : null}
+                {productFieldDrafts.map((field, index) => renderFieldEditor(field, index, "product"))}
+              </section>
 
-              {productFieldDrafts.map((field, index) => renderFieldEditor(field, index, "product"))}
-            </section>
+              <section className="card" style={{ display: "grid", gap: 10 }}>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <strong>Variant Fields</strong>
+                  <button type="button" className="secondary" onClick={() => addField("variant")} disabled={variantFieldDrafts.length >= MAX_PRODUCT_FIELDS}>
+                    Add Field
+                  </button>
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.8 }}>
+                  {`Fields: ${variantFieldDrafts.length}/${MAX_PRODUCT_FIELDS}`}
+                </div>
 
-            <section className="card" style={{ display: "grid", gap: 10 }}>
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                <strong>Variant Fields</strong>
-                <button type="button" className="secondary" onClick={() => addField("variant")} disabled={variantFieldDrafts.length >= MAX_PRODUCT_FIELDS}>
-                  Add Field
-                </button>
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>
-                {`Fields: ${variantFieldDrafts.length}/${MAX_PRODUCT_FIELDS}`}
-              </div>
+                {!variantFieldDrafts.length ? <div style={{ opacity: 0.75 }}>No variant fields configured.</div> : null}
 
-              {!variantFieldDrafts.length ? <div style={{ opacity: 0.75 }}>No variant fields configured.</div> : null}
+                {variantFieldDrafts.map((field, index) => renderFieldEditor(field, index, "variant"))}
+              </section>
 
-              {variantFieldDrafts.map((field, index) => renderFieldEditor(field, index, "variant"))}
-            </section>
+              <section className="card" style={{ display: "grid", gap: 10 }}>
+                <strong>Variant Options</strong>
 
-            <section className="card" style={{ display: "grid", gap: 10 }}>
-              <strong>Variant Options</strong>
-
-              <div className="card" style={{ display: "grid", gap: 8 }}>
-                <label>
-                  <input type="checkbox" checked={sizeEnabled} onChange={(e) => setSizeEnabled(e.target.checked)} />
-                  Enable Size
-                </label>
-                {sizeEnabled ? (
+                <div className="card" style={{ display: "grid", gap: 8 }}>
                   <label>
-                    Size Values (comma or newline separated)
-                    <textarea
-                      rows={3}
-                      value={sizeOptionsText}
-                      onChange={(e) => setSizeOptionsText(e.target.value)}
-                      placeholder="32, 34, 36"
-                    />
+                    <input type="checkbox" checked={sizeEnabled} onChange={(e) => setSizeEnabled(e.target.checked)} />
+                    Enable Size
                   </label>
-                ) : null}
-              </div>
+                  {sizeEnabled ? (
+                    <label>
+                      Size Values (comma or newline separated)
+                      <textarea
+                        rows={3}
+                        value={sizeOptionsText}
+                        onChange={(e) => setSizeOptionsText(e.target.value)}
+                        placeholder="32, 34, 36"
+                      />
+                    </label>
+                  ) : null}
+                </div>
 
-              <div className="card" style={{ display: "grid", gap: 8 }}>
-                <label>
-                  <input type="checkbox" checked={colorEnabled} onChange={(e) => setColorEnabled(e.target.checked)} />
-                  Enable Color
-                </label>
-                {colorEnabled ? (
+                <div className="card" style={{ display: "grid", gap: 8 }}>
                   <label>
-                    Allowed Colors (optional)
-                    <textarea
-                      rows={3}
-                      value={colorOptionsText}
-                      onChange={(e) => setColorOptionsText(e.target.value)}
-                      placeholder="red, gold, blue"
-                    />
+                    <input type="checkbox" checked={colorEnabled} onChange={(e) => setColorEnabled(e.target.checked)} />
+                    Enable Color
                   </label>
-                ) : null}
-              </div>
-            </section>
+                  {colorEnabled ? (
+                    <label>
+                      Allowed Colors (optional)
+                      <textarea
+                        rows={3}
+                        value={colorOptionsText}
+                        onChange={(e) => setColorOptionsText(e.target.value)}
+                        placeholder="red, gold, blue"
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              </section>
+            </fieldset>
 
             {validationWarnings.length ? (
               <section className="card" style={{ borderColor: "#f5c04d" }}>
@@ -522,7 +529,7 @@ export default function CategoryDetailPage() {
             ) : null}
 
             <div className="row" style={{ gap: 8 }}>
-              <button type="submit">Save Category</button>
+              {canUpdate ? <button type="submit">Save Category</button> : null}
               <button type="button" className="secondary" onClick={() => router.push("/admin/categories")}>Back</button>
             </div>
           </form>

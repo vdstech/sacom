@@ -1,101 +1,141 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ProtectedPage } from "@/components/ProtectedPage";
-import { useAuth } from "@/lib/auth";
+import { DashboardNav } from "@/components/dashboard/DashboardNav";
+import { ComparisonBars, LineTrendChart } from "@/components/dashboard/DashboardCharts";
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
 
-type MetricCard = {
-  label: string;
-  value: number;
-  revenue?: number;
-};
+type DashboardRangeKey = "today" | "this_week" | "7d" | "this_month" | "30d" | "this_year" | "custom";
 
-type TimeMetric = {
+type DashboardPoint = {
   period: string;
-  count: number;
-  revenue?: number;
-};
-
-type TopMetric = {
-  id: string;
   label: string;
-  count: number;
+  orders: number;
   revenue: number;
+  granularity: "day" | "week" | "month";
 };
 
-type MetricsPayload = {
-  metrics: {
-    totals: {
-      paidOrders: number;
-      failedPaymentOrders: number;
-      grossRevenue: number;
-      refundTotal: number;
-      soldItems: number;
-      cancelledItems: number;
-    };
-    sold: {
-      byDay: TimeMetric[];
-      byMonth: TimeMetric[];
-      byQuarter: TimeMetric[];
-    };
-    cancellations: {
-      byDay: TimeMetric[];
-      byMonth: TimeMetric[];
-      byQuarter: TimeMetric[];
-    };
-    topSellingProducts: TopMetric[];
-    topSellingCategories: TopMetric[];
-    topCancelledProducts: TopMetric[];
-    topCancelledCategories: TopMetric[];
+type ComparisonBlock = {
+  period: string;
+  current: {
+    revenue: number;
+    orders: number;
+  };
+  previous: {
+    revenue: number;
+    orders: number;
+  };
+  delta: {
+    revenue: number;
+    orders: number;
+    revenuePct: number;
+    ordersPct: number;
   };
 };
 
-function formatCurrency(value: number) {
+type OrdersDashboardPayload = {
+  dashboard: {
+    topSellingProducts: Array<{
+      id: string;
+      label: string;
+      count: number;
+      revenue: number;
+    }>;
+    comparisons: {
+      weekly: ComparisonBlock;
+      monthly: ComparisonBlock;
+      yearly: ComparisonBlock;
+    };
+    weeklySalesTrend: DashboardPoint[];
+    currentYearMonthlyTrend: DashboardPoint[];
+    salesTrend: {
+      points: DashboardPoint[];
+    };
+  };
+};
+
+const DASHBOARD_RANGES: Array<{ key: DashboardRangeKey; label: string }> = [
+  { key: "today", label: ADMIN_UI_STRINGS.orders.rangeToday },
+  { key: "this_week", label: ADMIN_UI_STRINGS.orders.rangeThisWeek },
+  { key: "7d", label: ADMIN_UI_STRINGS.orders.rangeLast7Days },
+  { key: "this_month", label: ADMIN_UI_STRINGS.orders.rangeThisMonth },
+  { key: "30d", label: ADMIN_UI_STRINGS.orders.rangeLast30Days },
+  { key: "this_year", label: ADMIN_UI_STRINGS.orders.rangeThisYear },
+  { key: "custom", label: ADMIN_UI_STRINGS.orders.rangeCustom },
+];
+
+function formatCurrency(value: number, currency = "INR") {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
-    currency: "INR",
+    currency,
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 }
 
-function MetricTable({ title, rows, showRevenue = false }: { title: string; rows: Array<TimeMetric | TopMetric>; showRevenue?: boolean }) {
+function buildDashboardQuery(range: DashboardRangeKey, customFrom: string, customTo: string) {
+  const params = new URLSearchParams();
+  if (range !== "custom") {
+    params.set("range", range);
+    return params.toString();
+  }
+  if (customFrom && customTo) {
+    params.set("from", customFrom);
+    params.set("to", customTo);
+    return params.toString();
+  }
+  params.set("range", "30d");
+  return params.toString();
+}
+
+function ComparisonCard({ title, block }: { title: string; block: ComparisonBlock }) {
   return (
-    <section className="card orders-metrics-table">
-      <div className="orders-detail__eyebrow">{title}</div>
-      {!rows.length ? (
-        <p className="section-copy">{ADMIN_UI_STRINGS.orders.metricsNoData}</p>
-      ) : (
-        <div className="orders-metrics-rows">
-          {rows.map((row) => (
-            <div key={"period" in row ? row.period : row.id} className="orders-metrics-row">
-              <strong>{"period" in row ? row.period : row.label}</strong>
-              <span>{row.count}</span>
-              {showRevenue ? <span>{formatCurrency(Number(row.revenue || 0))}</span> : null}
-            </div>
-          ))}
+    <article className="card dashboard-panel dashboard-panel--compact">
+      <header className="dashboard-panel__header">
+        <div>
+          <div className="orders-detail__eyebrow">{title}</div>
+          <h2>{formatCurrency(block.current.revenue)}</h2>
         </div>
-      )}
-    </section>
+        <span className={`dashboard-delta ${block.delta.revenue >= 0 ? "is-positive" : "is-negative"}`}>
+          {block.delta.revenue >= 0 ? "+" : ""}
+          {block.delta.revenuePct}%
+        </span>
+      </header>
+      <div className="dashboard-comparison-card__stats">
+        <div>
+          <strong>{ADMIN_UI_STRINGS.orders.salesCurrentPeriod}</strong>
+          <span>{block.current.orders} orders</span>
+        </div>
+        <div>
+          <strong>{ADMIN_UI_STRINGS.orders.salesPreviousPeriod}</strong>
+          <span>{formatCurrency(block.previous.revenue)}</span>
+        </div>
+      </div>
+    </article>
   );
 }
 
 export default function OrdersMetricsPage() {
   const { accessToken, refreshAccessToken } = useAuth();
-  const [payload, setPayload] = useState<MetricsPayload["metrics"] | null>(null);
-  const [error, setError] = useState("");
+  const [selectedRange, setSelectedRange] = useState<DashboardRangeKey>("30d");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [payload, setPayload] = useState<OrdersDashboardPayload["dashboard"] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const query = useMemo(() => buildDashboardQuery(selectedRange, customFrom, customTo), [customFrom, customTo, selectedRange]);
 
   const load = async () => {
     setLoading(true);
     try {
-      const response = await apiRequest<MetricsPayload>("/api/admin/orders/metrics", {
+      const response = await apiRequest<OrdersDashboardPayload>(`/api/admin/orders/dashboard?${query}`, {
         token: accessToken,
         onUnauthorized: refreshAccessToken,
       });
-      setPayload(response.metrics);
+      setPayload(response.dashboard);
       setError("");
     } catch (err) {
       setError((err as Error).message);
@@ -105,60 +145,134 @@ export default function OrdersMetricsPage() {
   };
 
   useEffect(() => {
-    load();
-  }, []);
-
-  const cards: MetricCard[] = payload ? [
-    { label: ADMIN_UI_STRINGS.orders.metricsPaidOrders, value: payload.totals.paidOrders },
-    { label: ADMIN_UI_STRINGS.orders.metricsFailedPayments, value: payload.totals.failedPaymentOrders },
-    { label: ADMIN_UI_STRINGS.orders.metricsGrossRevenue, value: payload.totals.grossRevenue },
-    { label: ADMIN_UI_STRINGS.orders.metricsRefundTotal, value: payload.totals.refundTotal },
-    { label: ADMIN_UI_STRINGS.orders.metricsSoldItems, value: payload.totals.soldItems },
-    { label: ADMIN_UI_STRINGS.orders.metricsCancelledItems, value: payload.totals.cancelledItems },
-  ] : [];
+    void load();
+  }, [query]);
 
   return (
     <ProtectedPage anyOf={["order:read", "order:admin", "order:processing", "order:packaging", "order:shipping", "order:cancellation"]}>
-      <section className="card row" style={{ justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <div>
+      <DashboardNav />
+
+      <section className="card dashboard-hero">
+        <div className="dashboard-hero__copy">
           <div className="orders-detail__eyebrow">{ADMIN_UI_STRINGS.orders.metricsTitle}</div>
-          <h1 style={{ margin: "6px 0 0" }}>{ADMIN_UI_STRINGS.orders.metricsSubtitle}</h1>
+          <h1>{ADMIN_UI_STRINGS.orders.salesTitle}</h1>
+          <p>{ADMIN_UI_STRINGS.orders.salesSubtitle}</p>
         </div>
-        <div className="row">
-          <Link href="/admin/orders/dashboard"><button className="secondary">{ADMIN_UI_STRINGS.orders.backToDashboard}</button></Link>
-          <Link href="/admin/orders"><button className="secondary">{ADMIN_UI_STRINGS.orders.backToQueue}</button></Link>
+        <div className="dashboard-hero__actions">
+          <label className="dashboard-filter">
+            <span>{ADMIN_UI_STRINGS.orders.overviewDateRange}</span>
+            <select value={selectedRange} onChange={(event) => setSelectedRange(event.target.value as DashboardRangeKey)}>
+              {DASHBOARD_RANGES.map((option) => (
+                <option key={option.key} value={option.key}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          {selectedRange === "custom" ? (
+            <>
+              <label className="dashboard-filter">
+                <span>{ADMIN_UI_STRINGS.orders.customFrom}</span>
+                <input type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} />
+              </label>
+              <label className="dashboard-filter">
+                <span>{ADMIN_UI_STRINGS.orders.customTo}</span>
+                <input type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
+              </label>
+            </>
+          ) : null}
           <button className="secondary" onClick={() => load()}>{ADMIN_UI_STRINGS.common.refresh}</button>
         </div>
       </section>
 
       {error ? <div className="error">{error}</div> : null}
-      {loading ? <div>{ADMIN_UI_STRINGS.common.loadingOrders}</div> : null}
+      {loading ? <section className="card dashboard-empty">{ADMIN_UI_STRINGS.orders.overviewLoading}</section> : null}
 
-      <section className="orders-metrics-grid">
-        {cards.map((card) => (
-          <article key={card.label} className="card orders-dashboard-card">
-            <span>{card.label}</span>
-            <strong>
-              {card.label === ADMIN_UI_STRINGS.orders.metricsGrossRevenue || card.label === ADMIN_UI_STRINGS.orders.metricsRefundTotal
-                ? formatCurrency(card.value)
-                : card.value}
-            </strong>
-          </article>
-        ))}
-      </section>
+      {payload ? (
+        <>
+          <section className="dashboard-kpi-grid dashboard-kpi-grid--comparisons">
+            <ComparisonCard title={ADMIN_UI_STRINGS.orders.salesWeeklyComparison} block={payload.comparisons.weekly} />
+            <ComparisonCard title={ADMIN_UI_STRINGS.orders.salesMonthlyComparison} block={payload.comparisons.monthly} />
+            <ComparisonCard title={ADMIN_UI_STRINGS.orders.salesYearlyComparison} block={payload.comparisons.yearly} />
+          </section>
 
-      <section className="orders-metrics-grid orders-metrics-grid--tables">
-        <MetricTable title={ADMIN_UI_STRINGS.orders.metricsSoldByDay} rows={payload?.sold.byDay || []} showRevenue />
-        <MetricTable title={ADMIN_UI_STRINGS.orders.metricsSoldByMonth} rows={payload?.sold.byMonth || []} showRevenue />
-        <MetricTable title={ADMIN_UI_STRINGS.orders.metricsSoldByQuarter} rows={payload?.sold.byQuarter || []} showRevenue />
-        <MetricTable title={ADMIN_UI_STRINGS.orders.metricsCancelledByDay} rows={payload?.cancellations.byDay || []} />
-        <MetricTable title={ADMIN_UI_STRINGS.orders.metricsCancelledByMonth} rows={payload?.cancellations.byMonth || []} />
-        <MetricTable title={ADMIN_UI_STRINGS.orders.metricsCancelledByQuarter} rows={payload?.cancellations.byQuarter || []} />
-        <MetricTable title={ADMIN_UI_STRINGS.orders.metricsTopSellingProducts} rows={payload?.topSellingProducts || []} showRevenue />
-        <MetricTable title={ADMIN_UI_STRINGS.orders.metricsTopSellingCategories} rows={payload?.topSellingCategories || []} showRevenue />
-        <MetricTable title={ADMIN_UI_STRINGS.orders.metricsTopCancelledProducts} rows={payload?.topCancelledProducts || []} showRevenue />
-        <MetricTable title={ADMIN_UI_STRINGS.orders.metricsTopCancelledCategories} rows={payload?.topCancelledCategories || []} showRevenue />
-      </section>
+          <section className="dashboard-grid dashboard-grid--secondary">
+            <article className="card dashboard-panel">
+              <header className="dashboard-panel__header">
+                <div>
+                  <div className="orders-detail__eyebrow">{ADMIN_UI_STRINGS.orders.metricsTitle}</div>
+                  <h2>{ADMIN_UI_STRINGS.orders.salesWeeklyRangeTrend}</h2>
+                </div>
+              </header>
+              <LineTrendChart
+                title={ADMIN_UI_STRINGS.orders.salesWeeklyRangeTrend}
+                points={payload.weeklySalesTrend.map((point) => ({
+                  label: point.label,
+                  revenue: point.revenue,
+                  orders: point.orders,
+                }))}
+              />
+            </article>
+
+            <article className="card dashboard-panel">
+              <header className="dashboard-panel__header">
+                <div>
+                  <div className="orders-detail__eyebrow">{ADMIN_UI_STRINGS.orders.metricsTitle}</div>
+                  <h2>{ADMIN_UI_STRINGS.orders.salesCurrentYearTrend}</h2>
+                </div>
+              </header>
+              <ComparisonBars
+                title={ADMIN_UI_STRINGS.orders.salesCurrentYearTrend}
+                bars={payload.currentYearMonthlyTrend.map((point) => ({
+                  label: point.label,
+                  value: point.revenue,
+                }))}
+              />
+            </article>
+          </section>
+
+          <section className="dashboard-grid dashboard-grid--secondary">
+            <article className="card dashboard-panel">
+              <header className="dashboard-panel__header">
+                <div>
+                  <div className="orders-detail__eyebrow">{ADMIN_UI_STRINGS.orders.metricsTitle}</div>
+                  <h2>{ADMIN_UI_STRINGS.orders.overviewTrendTitle}</h2>
+                </div>
+              </header>
+              <LineTrendChart
+                title={ADMIN_UI_STRINGS.orders.overviewTrendTitle}
+                points={payload.salesTrend.points.map((point) => ({
+                  label: point.label,
+                  revenue: point.revenue,
+                  orders: point.orders,
+                }))}
+              />
+            </article>
+
+            <article className="card dashboard-panel">
+              <header className="dashboard-panel__header">
+                <div>
+                  <div className="orders-detail__eyebrow">{ADMIN_UI_STRINGS.orders.metricsTitle}</div>
+                  <h2>{ADMIN_UI_STRINGS.orders.salesTopProducts}</h2>
+                </div>
+              </header>
+              {!payload.topSellingProducts.length ? (
+                <div className="dashboard-empty">{ADMIN_UI_STRINGS.orders.salesTopProductsEmpty}</div>
+              ) : (
+                <div className="dashboard-top-products">
+                  {payload.topSellingProducts.map((product) => (
+                    <div key={product.id} className="dashboard-top-products__item">
+                      <div>
+                        <strong>{product.label}</strong>
+                        <span>{product.count} sold</span>
+                      </div>
+                      <strong>{formatCurrency(product.revenue)}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          </section>
+        </>
+      ) : null}
     </ProtectedPage>
   );
 }

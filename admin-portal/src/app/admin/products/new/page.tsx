@@ -263,7 +263,7 @@ export default function NewProductPage() {
   };
 
   return (
-    <ProtectedPage anyOf={["product:write"]}>
+    <ProtectedPage anyOf={["product:create"]}>
       <section className="card">
         <h1>Create Product</h1>
         <form onSubmit={onSubmit} className="row" style={{ flexDirection: "column", alignItems: "stretch" }}>

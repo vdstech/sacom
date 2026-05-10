@@ -167,7 +167,7 @@ export default function NewCategoryPage() {
   };
 
   return (
-    <ProtectedPage anyOf={["category:write"]}>
+    <ProtectedPage anyOf={["category:create"]}>
       <FormDrawer title="Create Category">
         <form onSubmit={onSubmit} className="row" style={{ flexDirection: "column", alignItems: "stretch" }}>
           <label>

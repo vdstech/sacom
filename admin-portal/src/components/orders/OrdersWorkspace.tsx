@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ProtectedPage } from "@/components/ProtectedPage";
 import { PaginationControls } from "@/components/PaginationControls";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
+import { buildOrderPermissionAccess, hasOrderLaneAccess } from "@/lib/orderAccess";
 import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
 
 const PAGE_SIZE = 25;
@@ -71,6 +72,7 @@ type AddressSnapshot = {
 
 type OrderDoc = {
   id: string;
+  displayId?: string;
   placedAt?: string;
   status: string;
   paymentStatus?: string;
@@ -122,6 +124,10 @@ function formatCurrency(value: number) {
   }).format(Number(value || 0));
 }
 
+function orderDisplayId(order: Pick<OrderDoc, "id" | "displayId">) {
+  return order.displayId || `#${String(order.id || "").slice(-6).toUpperCase()}`;
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "-";
   const date = new Date(value);
@@ -139,14 +145,6 @@ function paymentLabel(status?: string) {
   return ADMIN_UI_STRINGS.orders.paymentStates[
     status as keyof typeof ADMIN_UI_STRINGS.orders.paymentStates
   ] || status;
-}
-
-function hasPermission(userPermissions: string[], permission: string) {
-  return userPermissions.includes(permission);
-}
-
-function hasAnyPermission(userPermissions: string[], needed: string[]) {
-  return needed.some((permission) => userPermissions.includes(permission));
 }
 
 function getOrderAmount(order: OrderDoc) {
@@ -248,9 +246,11 @@ export function OrdersWorkspace({
 }: OrdersWorkspaceProps) {
   const { accessToken, refreshAccessToken, me } = useAuth();
   const permissions = me?.permissions || [];
-  const roleNames = (me?.roles || []).map((role) => String(role?.name || "").toUpperCase());
   const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
-  const isSystemBypass = systemLevel === "SUPER" || systemLevel === "ADMIN";
+  const orderAccess = useMemo(
+    () => buildOrderPermissionAccess(permissions, systemLevel),
+    [permissions, systemLevel]
+  );
   const [orders, setOrders] = useState<OrderDoc[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -318,8 +318,9 @@ export function OrdersWorkspace({
   }, [searchInput, stockKeyInput]);
 
   useEffect(() => {
+    if (!hasOrderLaneAccess(orderAccess, lane)) return;
     load();
-  }, [lane, page, search, stockKey, accessToken]);
+  }, [lane, page, search, stockKey, accessToken, orderAccess]);
 
   const performAction = async (
     orderId: string,
@@ -354,9 +355,14 @@ export function OrdersWorkspace({
   };
 
   const required = requiredAnyOf || DEFAULT_REQUIRED[lane];
+  const hasLaneAccess = hasOrderLaneAccess(orderAccess, lane);
 
   return (
     <ProtectedPage anyOf={required}>
+      {!hasLaneAccess ? (
+        <div className="card">Forbidden</div>
+      ) : (
+        <>
       <section className="card row" style={{ justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div>
           <div className="orders-detail__eyebrow">{subtitle}</div>
@@ -403,7 +409,7 @@ export function OrdersWorkspace({
                 onClick={() => setSelectedOrderId(order.id)}
               >
                 <div>
-                  <strong>#{order.id.slice(-6).toUpperCase()}</strong>
+                  <strong>{orderDisplayId(order)}</strong>
                   <div className="section-copy">{formatDate(order.placedAt)}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -420,7 +426,7 @@ export function OrdersWorkspace({
                 <div className="row" style={{ justifyContent: "space-between", alignItems: "start", flexWrap: "wrap" }}>
                   <div>
                     <div className="orders-detail__eyebrow">{ADMIN_UI_STRINGS.orders.detailTitle}</div>
-                    <h2 style={{ margin: "6px 0 0" }}>#{selectedOrder.id.slice(-6).toUpperCase()}</h2>
+                    <h2 style={{ margin: "6px 0 0" }}>{orderDisplayId(selectedOrder)}</h2>
                     <div className="section-copy">
                       {ADMIN_UI_STRINGS.orders.orderStatusPrefix}: {statusLabel(selectedOrder.fulfillmentStatus)}
                     </div>
@@ -457,31 +463,11 @@ export function OrdersWorkspace({
                       owner === "PACKAGING_MANAGER" &&
                       !isCancelledShippingPendingReceipt;
                     const isCancelledShippingOwned = status === "CANCEL_REQUESTED" && owner === "SHIPPING_OPERATOR";
-                    const hasProcessingAccess = isSystemBypass ||
-                      hasAnyPermission(permissions, ["order:processing", "order:pack", "order:override", "order:admin"]) ||
-                      roleNames.includes("PROCESSING_MANAGER") ||
-                      roleNames.includes("ORDER_PROCESSOR") ||
-                      roleNames.includes("ORDER_OPERATOR") ||
-                      roleNames.includes("ORDER_OPERATIONS");
-                    const hasPackagingAccess = isSystemBypass ||
-                      hasAnyPermission(permissions, ["order:packaging", "order:pack", "order:override", "order:admin"]) ||
-                      roleNames.includes("PACKAGING_MANAGER") ||
-                      roleNames.includes("ORDER_OPERATIONS");
-                    const hasShippingAccess = isSystemBypass ||
-                      hasAnyPermission(permissions, ["order:shipping", "order:ship", "order:override", "order:admin"]) ||
-                      roleNames.includes("SHIPPING_OPERATOR") ||
-                      roleNames.includes("SHIPPING_MANAGER") ||
-                      roleNames.includes("ORDER_OPERATIONS");
-                    const hasCancellationAccess = isSystemBypass ||
-                      hasAnyPermission(permissions, ["order:cancellation", "order:cancel:manage", "order:cancel", "order:override", "order:admin"]) ||
-                      roleNames.includes("CANCELLATION_MANAGER") ||
-                      roleNames.includes("RETURN_MANAGER") ||
-                      roleNames.includes("ORDER_OPERATIONS");
-                    const hasAdminAccess = isSystemBypass ||
-                      hasAnyPermission(permissions, ["order:admin", "order:override", "order:cancel"]) ||
-                      roleNames.includes("ORDER_ADMIN") ||
-                      roleNames.includes("ORDER_MANAGER") ||
-                      roleNames.includes("ORDER_OPERATIONS");
+                    const hasProcessingAccess = orderAccess.processing;
+                    const hasPackagingAccess = orderAccess.packaging;
+                    const hasShippingAccess = orderAccess.shipping;
+                    const hasCancellationAccess = orderAccess.cancellations;
+                    const hasAdminAccess = orderAccess.admin;
 
                     const canAdminCancel = hasAdminAccess &&
                       !["SHIPPED", "DELIVERED", "CANCELLED_BEFORE_PICKING", "CANCEL_RESTOCKED", "CANCEL_DAMAGED", "CANCEL_LOST", "CANCEL_CLOSED"].includes(status);
@@ -793,6 +779,8 @@ export function OrdersWorkspace({
           nextLabel={ADMIN_UI_STRINGS.common.next}
         />
       ) : null}
+        </>
+      )}
     </ProtectedPage>
   );
 }

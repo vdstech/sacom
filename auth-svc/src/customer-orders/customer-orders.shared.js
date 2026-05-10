@@ -7,6 +7,14 @@ function normalizeString(value, fallback = "") {
   return String(value ?? fallback).trim();
 }
 
+export function resolveOrderDisplayId(order) {
+  const paymentReference = normalizeString(order?.paymentReference);
+  if (paymentReference) return paymentReference;
+  const rawId = normalizeString(order?._id || order?.id);
+  if (!rawId) return "";
+  return `#${rawId.slice(-6).toUpperCase()}`;
+}
+
 export const ORDER_ITEM_FULFILLMENT_STATUSES = [
   "RESERVED",
   "PICKED_FROM_WAREHOUSE",
@@ -326,6 +334,7 @@ export function mapOrder(order) {
 
   return {
     id: String(order?._id || ""),
+    displayId: resolveOrderDisplayId(order),
     placedAt: order?.placedAt,
     status: normalizeString(order?.status, fulfillmentStatus),
     paymentStatus,

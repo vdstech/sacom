@@ -65,7 +65,14 @@ export default function ProductsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const canDelete = hasAnyPermission(me?.permissions || [], ["product:delete"]);
+  const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
+  const isSystemBypass = systemLevel === "SUPER" || systemLevel === "ADMIN";
+  const permissions = me?.permissions || [];
+  const canRead = isSystemBypass || hasAnyPermission(permissions, ["product:read"]);
+  const canCreate = isSystemBypass || hasAnyPermission(permissions, ["product:create"]);
+  const canUpdate = isSystemBypass || hasAnyPermission(permissions, ["product:update"]);
+  const canDelete = isSystemBypass || hasAnyPermission(permissions, ["product:delete"]);
+  const canPublish = isSystemBypass || hasAnyPermission(permissions, ["product:publish"]);
   const categoryMap = useMemo(() => buildCategoryMap(categories), [categories]);
 
   const loadCategories = async () => {
@@ -128,7 +135,7 @@ export default function ProductsPage() {
   };
 
   return (
-    <ProtectedPage anyOf={["product:read", "product:write", "product:delete", "product:publish"]}>
+    <ProtectedPage anyOf={["product:read", "product:create", "product:update", "product:delete", "product:publish"]}>
       <section className="card row" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <h1 style={{ marginRight: "auto" }}>{ADMIN_UI_STRINGS.products.title}</h1>
         <label style={{ minWidth: 220 }}>
@@ -147,7 +154,7 @@ export default function ProductsPage() {
             ))}
           </select>
         </label>
-        <Link href="/admin/products/new"><button>{ADMIN_UI_STRINGS.products.createProduct}</button></Link>
+        {canCreate ? <Link href="/admin/products/new"><button>{ADMIN_UI_STRINGS.products.createProduct}</button></Link> : null}
         <button className="secondary" onClick={() => load()}>{ADMIN_UI_STRINGS.common.refresh}</button>
       </section>
 
@@ -207,23 +214,25 @@ export default function ProductsPage() {
           product.isFeatured ? ADMIN_UI_STRINGS.common.yes : ADMIN_UI_STRINGS.common.no,
           <StatusBadge key={`status-${product._id}`} active={!!product.isActive} />,
           <div key={product._id} className="row">
-            <Link href={`/admin/products/${product._id}`}><button className="secondary">{ADMIN_UI_STRINGS.common.edit}</button></Link>
-            <Link href={`/admin/products/${product._id}/variants`}><button className="secondary">{ADMIN_UI_STRINGS.products.variants}</button></Link>
-            <button
-              className="secondary"
-              onClick={async () => {
-                await apiRequest(`/api/admin/products/${product._id}/publish`, {
-                  service: "product",
-                  method: "PATCH",
-                  token: accessToken,
-                  onUnauthorized: refreshAccessToken,
-                  body: { isActive: !product.isActive },
-                });
-                load();
-              }}
-            >
-              {product.isActive ? ADMIN_UI_STRINGS.products.unpublish : ADMIN_UI_STRINGS.products.publish}
-            </button>
+            {canRead || canUpdate ? <Link href={`/admin/products/${product._id}`}><button className="secondary">{ADMIN_UI_STRINGS.common.edit}</button></Link> : null}
+            {canRead || canUpdate ? <Link href={`/admin/products/${product._id}/variants`}><button className="secondary">{ADMIN_UI_STRINGS.products.variants}</button></Link> : null}
+            {canPublish ? (
+              <button
+                className="secondary"
+                onClick={async () => {
+                  await apiRequest(`/api/admin/products/${product._id}/publish`, {
+                    service: "product",
+                    method: "PATCH",
+                    token: accessToken,
+                    onUnauthorized: refreshAccessToken,
+                    body: { isActive: !product.isActive },
+                  });
+                  load();
+                }}
+              >
+                {product.isActive ? ADMIN_UI_STRINGS.products.unpublish : ADMIN_UI_STRINGS.products.publish}
+              </button>
+            ) : null}
             {canDelete ? (
               <button
                 className="danger"

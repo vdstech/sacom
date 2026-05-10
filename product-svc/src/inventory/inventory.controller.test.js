@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
-import { buildInventoryListResponse, buildInventorySearchClause } from "./inventory.controller.js";
+import {
+  buildInventoryDashboardSummary,
+  buildInventoryListResponse,
+  buildInventorySearchClause,
+  resolveAvailableQuantity,
+} from "./inventory.controller.js";
 
 test("buildInventorySearchClause matches stock key and size label text", () => {
   const clause = buildInventorySearchClause("stk-42");
@@ -62,4 +67,61 @@ test("buildInventoryListResponse computes pagination for non-empty results", () 
   assert.equal(payload.total, 101);
   assert.equal(payload.page, 2);
   assert.equal(payload.limit, 50);
+});
+
+test("resolveAvailableQuantity prefers tracked availableQty when present", () => {
+  assert.equal(resolveAvailableQuantity({ quantity: 5, availableQty: 1 }), 1);
+  assert.equal(resolveAvailableQuantity({ quantity: 5 }), 5);
+});
+
+test("buildInventoryDashboardSummary separates low-stock and out-of-stock variants", () => {
+  const productId = new mongoose.Types.ObjectId();
+  const variantId = new mongoose.Types.ObjectId();
+  const variantIdTwo = new mongoose.Types.ObjectId();
+
+  const summary = buildInventoryDashboardSummary({
+    threshold: 2,
+    limit: 8,
+    items: [
+      {
+        _id: "inventory-1",
+        productId,
+        variantId,
+        stockKey: "SKU-1",
+        sizeLabel: "36",
+        quantity: 1,
+      },
+      {
+        _id: "inventory-2",
+        productId,
+        variantId: variantIdTwo,
+        stockKey: "SKU-2",
+        sizeLabel: "38",
+        quantity: 0,
+      },
+      {
+        _id: "inventory-3",
+        productId,
+        variantId: new mongoose.Types.ObjectId(),
+        stockKey: "SKU-3",
+        sizeLabel: "40",
+        quantity: 4,
+      },
+    ],
+    productMap: new Map([
+      [String(productId), { _id: productId, title: "Silk Saree", slug: "silk-saree" }],
+    ]),
+    variantMap: new Map([
+      [String(variantId), { _id: variantId, colors: [{ name: "Red" }], sizeLabel: "36", stock: [{ stockKey: "SKU-1", availableQty: 1, reorderLevel: 0 }] }],
+      [String(variantIdTwo), { _id: variantIdTwo, colors: [{ name: "Blue" }], sizeLabel: "38", stock: [{ stockKey: "SKU-2", availableQty: 0, reorderLevel: 0 }] }],
+    ]),
+  });
+
+  assert.equal(summary.threshold, 2);
+  assert.equal(summary.lowStockVariantsCount, 1);
+  assert.equal(summary.outOfStockVariantsCount, 1);
+  assert.equal(summary.lowStockVariants[0].productTitle, "Silk Saree");
+  assert.equal(summary.lowStockVariants[0].availableStock, 1);
+  assert.equal(summary.outOfStockVariants[0].availableStock, 0);
+  assert.match(summary.lowStockVariants[0].variantSummary, /Red/);
 });

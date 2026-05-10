@@ -31,7 +31,7 @@ router.post("/:id/items/:itemId/start-shipping", requireAuth, requiresPermission
 router.post("/:id/items/:itemId/assign-courier", requireAuth, requiresPermission(["order:read", "order:shipping"]), controller.shippingAssignCourierOrderItem);
 router.post("/:id/items/:itemId/tracking", requireAuth, requiresPermission(["order:read", "order:shipping"]), controller.shippingTrackingOrderItem);
 router.post("/:id/items/:itemId/mark-shipped", requireAuth, requiresPermission(["order:read", "order:shipping"]), controller.shippingMarkShippedOrderItem);
-router.post("/:id/items/:itemId/mark-delivered", requireAuth, requiresPermission("order:read"), controller.adminMarkDeliveredOrderItem);
+router.post("/:id/items/:itemId/mark-delivered", requireAuth, requiresPermission(["order:read", "order:shipping"]), controller.adminMarkDeliveredOrderItem);
 
 router.get("/cancellations/pending", requireAuth, requiresPermission(["order:read", "order:cancellation"]), controller.listCancellationQueue);
 router.post("/order-items/:itemId/cancel", requireAuth, requiresPermission(["order:read", "order:admin"]), controller.adminCancelOrderItem);

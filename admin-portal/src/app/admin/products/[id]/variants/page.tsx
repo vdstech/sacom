@@ -6,6 +6,7 @@ import { ProtectedPage } from "@/components/ProtectedPage";
 import { DataTable } from "@/components/DataTable";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
+import { hasAnyPermission } from "@/lib/permissions";
 import {
   CategoryDefinitionConfig,
   ProductFieldDefinition,
@@ -193,7 +194,7 @@ function mapVariantToForm(variant: VariantDoc | null, config: CategoryDefinition
 
 export default function ProductVariantsPage() {
   const { id } = useParams<{ id: string }>();
-  const { accessToken, refreshAccessToken } = useAuth();
+  const { accessToken, refreshAccessToken, me } = useAuth();
 
   const [variants, setVariants] = useState<VariantDoc[]>([]);
   const [config, setConfig] = useState<CategoryDefinitionConfig>(defaultFilterConfig());
@@ -210,6 +211,9 @@ export default function ProductVariantsPage() {
     ? sizeLabels.filter((label) => !form.stock.some((row) => normalizeToken(row.sizeLabel) === normalizeToken(label)))
     : [];
   const selectedSizeToAdd = availableSizeLabels.includes(sizeToAdd) ? sizeToAdd : (availableSizeLabels[0] || "");
+  const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
+  const isSystemBypass = systemLevel === "SUPER" || systemLevel === "ADMIN";
+  const canUpdate = isSystemBypass || hasAnyPermission(me?.permissions || [], ["product:update"]);
 
   const load = async () => {
     try {
@@ -262,6 +266,7 @@ export default function ProductVariantsPage() {
   };
 
   const startEdit = (variant: VariantDoc) => {
+    if (!canUpdate) return;
     setEditingVariantId(variant._id);
     setForm(mapVariantToForm(variant, config));
     setSizeToAdd("");
@@ -293,6 +298,7 @@ export default function ProductVariantsPage() {
   };
 
   const addSizeRow = () => {
+    if (!canUpdate) return;
     if (!selectedSizeToAdd) return;
     setForm((prev) => ({
       ...prev,
@@ -309,6 +315,7 @@ export default function ProductVariantsPage() {
   };
 
   const removeStockRow = (index: number) => {
+    if (!canUpdate) return;
     setForm((prev) => ({
       ...prev,
       stock: prev.stock.filter((_, rowIndex) => rowIndex !== index),
@@ -432,6 +439,7 @@ export default function ProductVariantsPage() {
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!canUpdate) return;
 
     try {
       const body = buildRequestBody();
@@ -462,11 +470,11 @@ export default function ProductVariantsPage() {
   };
 
   return (
-    <ProtectedPage anyOf={["product:read", "product:write"]}>
+    <ProtectedPage anyOf={["product:read", "product:update"]}>
       <section className="card">
         <div className="row" style={{ alignItems: "center", marginBottom: 12 }}>
           <h1 style={{ marginRight: "auto" }}>Variants</h1>
-          <button className="secondary" type="button" onClick={resetForm}>New Variant</button>
+          {canUpdate ? <button className="secondary" type="button" onClick={resetForm}>New Variant</button> : null}
           <button className="secondary" type="button" onClick={load}>Refresh</button>
         </div>
 
@@ -501,7 +509,7 @@ export default function ProductVariantsPage() {
               .join(", ") || "-",
             variant.isDefault ? "Yes" : "No",
             variant.isActive ? "Yes" : "No",
-            <button key={variant._id} className="secondary" onClick={() => startEdit(variant)}>Edit</button>,
+            canUpdate ? <button key={variant._id} className="secondary" onClick={() => startEdit(variant)}>Edit</button> : "Read only",
           ])}
         />
       </section>
@@ -509,6 +517,7 @@ export default function ProductVariantsPage() {
       <section className="card">
         <h2>{editingVariantId ? "Edit Variant" : "Create Variant"}</h2>
         <form onSubmit={onSubmit} className="row" style={{ flexDirection: "column", alignItems: "stretch" }}>
+          <fieldset disabled={!canUpdate} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 16 }}>
           <label>
             Price
             <input
@@ -673,10 +682,11 @@ export default function ProductVariantsPage() {
 
           <label><input type="checkbox" checked={form.isDefault} onChange={(e) => setForm((prev) => ({ ...prev, isDefault: e.target.checked }))} /> Default variant</label>
           <label><input type="checkbox" checked={form.isActive} onChange={(e) => setForm((prev) => ({ ...prev, isActive: e.target.checked }))} /> Active</label>
+          </fieldset>
 
           <div className="row">
-            <button>{editingVariantId ? "Save Variant" : "Create Variant"}</button>
-            {editingVariantId ? <button type="button" className="secondary" onClick={resetForm}>Cancel</button> : null}
+            {canUpdate ? <button>{editingVariantId ? "Save Variant" : "Create Variant"}</button> : null}
+            {editingVariantId && canUpdate ? <button type="button" className="secondary" onClick={resetForm}>Cancel</button> : null}
           </div>
         </form>
       </section>

@@ -1,11 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import { ProtectedPage } from "@/components/ProtectedPage";
 import { DataTable } from "@/components/DataTable";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
 import { MENU_ITEMS } from "@/lib/permissions";
+import { buildRbacWarnings } from "@/lib/rbacWarnings";
 
 type RoleDoc = {
   _id: string;
@@ -69,6 +70,27 @@ export default function RolesPage() {
   const editingRole = useMemo(
     () => roles.find((role) => role._id === editingRoleId) || null,
     [roles, editingRoleId]
+  );
+  const permissionCodeById = useMemo(
+    () => new Map(permissions.map((permission) => [permission._id, permission.code])),
+    [permissions]
+  );
+  const selectedPermissionCodes = useMemo(
+    () => formState.permissions
+      .map((permissionId) => permissionCodeById.get(permissionId))
+      .filter((code): code is string => !!code)
+      .sort(),
+    [formState.permissions, permissionCodeById]
+  );
+  const warningMenuIds = useMemo(
+    () => formState.visibleMenusConfigured
+      ? formState.visibleMenus
+      : MENU_ITEMS.map((item) => item.id),
+    [formState.visibleMenus, formState.visibleMenusConfigured]
+  );
+  const rbacWarnings = useMemo(
+    () => buildRbacWarnings(selectedPermissionCodes, warningMenuIds),
+    [selectedPermissionCodes, warningMenuIds]
   );
 
   const resetForm = () => {
@@ -171,6 +193,30 @@ export default function RolesPage() {
             <button type="button" className="secondary" onClick={resetForm}>Cancel</button>
           ) : null}
         </form>
+        {rbacWarnings.length ? (
+          <div
+            data-testid="rbac-warning-list"
+            style={{
+              marginTop: 16,
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid rgba(255, 193, 7, 0.35)",
+              background: "rgba(255, 193, 7, 0.08)",
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <strong>Configuration Warnings</strong>
+            {rbacWarnings.map((warning) => (
+              <div key={warning.type} style={{ display: "grid", gap: 4 }}>
+                <div>{warning.message}</div>
+                <div style={{ fontSize: 13, opacity: 0.85 }}>
+                  Suggested fix: {warning.recommendedFix}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
       {error ? <div className="error">{error}</div> : null}
       <DataTable

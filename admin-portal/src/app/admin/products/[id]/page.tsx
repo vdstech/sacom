@@ -97,7 +97,11 @@ export default function ProductDetailPage() {
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
-  const canDelete = hasAnyPermission(me?.permissions || [], ["product:delete"]);
+  const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
+  const isSystemBypass = systemLevel === "SUPER" || systemLevel === "ADMIN";
+  const permissions = me?.permissions || [];
+  const canUpdate = isSystemBypass || hasAnyPermission(permissions, ["product:update"]);
+  const canDelete = isSystemBypass || hasAnyPermission(permissions, ["product:delete"]);
 
   const loadCategories = async () => {
     const payload = await apiRequest<CategoryDoc[]>("/api/categories", {
@@ -315,6 +319,7 @@ export default function ProductDetailPage() {
   const save = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!product) return;
+    if (!canUpdate) return;
 
     const form = new FormData(e.currentTarget);
 
@@ -353,12 +358,13 @@ export default function ProductDetailPage() {
   };
 
   return (
-    <ProtectedPage anyOf={["product:read", "product:write", "product:delete"]}>
+    <ProtectedPage anyOf={["product:read", "product:update", "product:delete"]}>
       <section className="card">
         <h1>Product Detail</h1>
         {error ? <div className="error">{error}</div> : null}
         {!product ? <div>Loading...</div> : (
           <form onSubmit={save} className="row" style={{ flexDirection: "column", alignItems: "stretch" }}>
+            <fieldset disabled={!canUpdate} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 16 }}>
             <label>
               Title
               <input
@@ -423,8 +429,9 @@ export default function ProductDetailPage() {
 
             <label><input type="checkbox" name="isActive" defaultChecked={!!product.isActive} /> Active</label>
             <label><input type="checkbox" name="isFeatured" defaultChecked={!!product.isFeatured} /> Featured</label>
+            </fieldset>
             <div className="row">
-              <button>Save</button>
+              {canUpdate ? <button>Save</button> : null}
               {canDelete ? (
                 <button
                   type="button"

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import React, { FormEvent, useEffect, useState } from "react";
 import { ProtectedPage } from "@/components/ProtectedPage";
 import { DataTable } from "@/components/DataTable";
 import { useAuth } from "@/lib/auth";
@@ -13,9 +13,11 @@ type PermissionDoc = {
 };
 
 export default function PermissionsPage() {
-  const { accessToken, refreshAccessToken } = useAuth();
+  const { accessToken, refreshAccessToken, me } = useAuth();
   const [permissions, setPermissions] = useState<PermissionDoc[]>([]);
   const [error, setError] = useState("");
+  const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
+  const canMutatePermissions = systemLevel === "SUPER";
 
   const load = async () => {
     try {
@@ -35,6 +37,7 @@ export default function PermissionsPage() {
 
   const createPermission = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!canMutatePermissions) return;
     const form = new FormData(e.currentTarget);
     try {
       await apiRequest("/api/admin/permissions", {
@@ -56,14 +59,18 @@ export default function PermissionsPage() {
   };
 
   return (
-    <ProtectedPage anyOf={["permission:read", "permission:create", "permission:delete"]}>
+    <ProtectedPage anyOf={["permission:read"]}>
       <section className="card">
         <h1>Permissions</h1>
-        <form onSubmit={createPermission} className="row" style={{ alignItems: "end" }}>
-          <label style={{ flex: 1 }}>Code<input name="code" required /></label>
-          <label style={{ flex: 1 }}>Description<input name="description" required /></label>
-          <button>Create</button>
-        </form>
+        {canMutatePermissions ? (
+          <form onSubmit={createPermission} className="row" style={{ alignItems: "end" }}>
+            <label style={{ flex: 1 }}>Code<input name="code" required /></label>
+            <label style={{ flex: 1 }}>Description<input name="description" required /></label>
+            <button>Create</button>
+          </form>
+        ) : (
+          <p style={{ marginBottom: 0, opacity: 0.8 }}>Only super admins can change the permission catalog.</p>
+        )}
       </section>
       {error ? <div className="error">{error}</div> : null}
       <DataTable
@@ -71,21 +78,23 @@ export default function PermissionsPage() {
         rows={permissions.map((p) => [
           p.code,
           p.description,
-          <button
-            key={p._id}
-            className="danger"
-            onClick={async () => {
-              await apiRequest(`/api/admin/permissions/${p._id}`, {
-                service: "auth",
-                method: "DELETE",
-                token: accessToken,
-                onUnauthorized: refreshAccessToken,
-              });
-              load();
-            }}
-          >
-            Delete
-          </button>,
+          canMutatePermissions ? (
+            <button
+              key={p._id}
+              className="danger"
+              onClick={async () => {
+                await apiRequest(`/api/admin/permissions/${p._id}`, {
+                  service: "auth",
+                  method: "DELETE",
+                  token: accessToken,
+                  onUnauthorized: refreshAccessToken,
+                });
+                load();
+              }}
+            >
+              Delete
+            </button>
+          ) : "Read only",
         ])}
       />
     </ProtectedPage>

@@ -6,6 +6,7 @@ import { ProtectedPage } from "@/components/ProtectedPage";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
+import { hasAnyPermission } from "@/lib/permissions";
 import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
 import {
   buildHierarchyTree,
@@ -20,10 +21,14 @@ type CategoryDoc = CategoryHierarchyNode & {
 };
 
 export default function CategoriesPage() {
-  const { accessToken, refreshAccessToken } = useAuth();
+  const { accessToken, refreshAccessToken, me } = useAuth();
   const [categories, setCategories] = useState<CategoryDoc[]>([]);
   const [error, setError] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
+  const isSystemBypass = systemLevel === "SUPER" || systemLevel === "ADMIN";
+  const permissions = me?.permissions || [];
+  const canCreate = isSystemBypass || hasAnyPermission(permissions, ["category:create"]);
 
   const load = async () => {
     try {
@@ -107,10 +112,10 @@ export default function CategoriesPage() {
   };
 
   return (
-    <ProtectedPage anyOf={["category:read", "category:write", "category:delete"]}>
+    <ProtectedPage anyOf={["category:read", "category:create", "category:update", "category:delete"]}>
       <section className="card row">
         <h1 style={{ marginRight: "auto" }}>{ADMIN_UI_STRINGS.categories.title}</h1>
-        <Link href="/admin/categories/new"><button>{ADMIN_UI_STRINGS.categories.createCategory}</button></Link>
+        {canCreate ? <Link href="/admin/categories/new"><button>{ADMIN_UI_STRINGS.categories.createCategory}</button></Link> : null}
         <button className="secondary" onClick={load}>{ADMIN_UI_STRINGS.common.refresh}</button>
       </section>
       {error ? <div className="error">{error}</div> : null}
