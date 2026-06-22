@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Category from "./category.model.js";
 import { mergeFilterConfigs, normalizeFilterConfig } from "./filterConfig.js";
+import { recordAuditEvent } from "../audit/audit.service.js";
 
 function slugify(text) {
   return String(text || "")
@@ -97,6 +98,15 @@ export async function createCategory(req, res) {
     });
     clearFilterConfigCache();
 
+    await recordAuditEvent({
+      req,
+      action: "CATEGORY_CREATED",
+      entityType: "CATEGORY",
+      entityId: String(doc._id),
+      entityDisplayId: doc.slug,
+      after: doc.toObject ? doc.toObject() : doc,
+    });
+
     return res.status(201).json(doc);
   } catch (err) {
     // Duplicate key (same parent+slug)
@@ -188,6 +198,7 @@ export async function updateCategory(req, res) {
 
     const doc = await Category.findById(id);
     if (!doc) return res.status(404).json({ error: "Category not found" });
+    const before = doc.toObject();
 
     // Optional safety: block setting parent to itself
     if (patch.parent && String(patch.parent) === String(doc._id)) {
@@ -210,6 +221,16 @@ export async function updateCategory(req, res) {
     Object.assign(doc, patch);
     await doc.save();
     clearFilterConfigCache();
+
+    await recordAuditEvent({
+      req,
+      action: "CATEGORY_UPDATED",
+      entityType: "CATEGORY",
+      entityId: String(doc._id),
+      entityDisplayId: doc.slug,
+      before,
+      after: doc.toObject(),
+    });
 
     return res.json(doc);
   } catch (err) {
@@ -240,6 +261,9 @@ export async function deleteCategory(req, res) {
     }
 
     // Soft delete is safer for ecommerce (recommended)
+    const existing = await Category.findById(id).lean();
+    if (!existing) return res.status(404).json({ error: "Category not found" });
+
     const doc = await Category.findByIdAndUpdate(
       id,
       { isActive: false, updatedBy: req.user?._id || null },
@@ -248,6 +272,15 @@ export async function deleteCategory(req, res) {
 
     if (!doc) return res.status(404).json({ error: "Category not found" });
     clearFilterConfigCache();
+    await recordAuditEvent({
+      req,
+      action: "CATEGORY_DELETED",
+      entityType: "CATEGORY",
+      entityId: String(doc._id),
+      entityDisplayId: doc.slug,
+      before: existing,
+      after: doc.toObject ? doc.toObject() : doc,
+    });
     return res.json({ success: true, category: doc });
   } catch (err) {
     return res.status(500).json({ error: err.message || "Failed to delete category" });

@@ -18,12 +18,18 @@ type VariantStock = {
   stockKey?: string;
   sizeLabel?: string;
   quantity?: number;
+  availableQty?: number;
+  reservedQty?: number;
+  damagedQty?: number;
+  lostQty?: number;
   reorderLevel?: number;
 };
 
 type VariantDoc = {
   _id: string;
   price: number;
+  taxRate?: number;
+  priceIncludesTax?: boolean;
   discount?: {
     type?: "none" | "percent" | "flat";
     value?: number;
@@ -63,6 +69,7 @@ type StockRowFormState = {
 
 type VariantFormState = {
   price: string;
+  taxRatePercent: string;
   discountType: "none" | "percent" | "flat";
   discountValue: string;
   discountLabel: string;
@@ -180,6 +187,7 @@ function mapVariantToForm(variant: VariantDoc | null, config: CategoryDefinition
 
   return {
     price: variant ? String(variant.price ?? "") : "",
+    taxRatePercent: String(Math.round(Number((variant?.taxRate ?? 0.05) * 100))),
     discountType: (variant?.discount?.type || "none") as "none" | "percent" | "flat",
     discountValue: String(variant?.discount?.value ?? 0),
     discountLabel: String(variant?.discount?.label || ""),
@@ -419,6 +427,7 @@ export default function ProductVariantsPage() {
 
   const buildRequestBody = () => ({
     price: Number(form.price || 0),
+    taxRate: Number(form.taxRatePercent || 5) / 100,
     discount: {
       type: form.discountType,
       value: Number(form.discountValue || 0),
@@ -432,8 +441,6 @@ export default function ProductVariantsPage() {
     stock: form.stock.map((row) => ({
       ...(row.stockKey ? { stockKey: row.stockKey } : {}),
       sizeLabel: row.sizeLabel,
-      quantity: Number(row.quantity || 0),
-      reorderLevel: Number(row.reorderLevel || 0),
     })),
   });
 
@@ -481,7 +488,7 @@ export default function ProductVariantsPage() {
         {error ? <div className="error">{error}</div> : null}
 
         <DataTable
-          headers={["Image", "Colors", "Sizes", "Price", "Stock", "Default", "Active", "Action"]}
+          headers={["Image", "Colors", "Sizes", "Price", "GST", "Stock", "Default", "Active", "Action"]}
           rows={variants.map((variant) => [
             variant.images?.[0]?.url ? (
               <img
@@ -504,6 +511,7 @@ export default function ProductVariantsPage() {
               .join(", ") || variant.color?.name || "-",
             (variant.stock || []).map((entry) => entry.sizeLabel).filter(Boolean).join(", ") || variant.sizeLabel || "-",
             `₹${Number(variant.price || 0)}`,
+            `${Math.round(Number((variant.taxRate ?? 0.05) * 100))}%`,
             (variant.stock || [])
               .map((entry) => `${entry.sizeLabel ? `${entry.sizeLabel}: ` : ""}${Number(entry.quantity || 0)}`)
               .join(", ") || "-",
@@ -526,6 +534,18 @@ export default function ProductVariantsPage() {
               required
               value={form.price}
               onChange={(e) => setForm((prev) => ({ ...prev, price: e.target.value }))}
+            />
+          </label>
+
+          <label>
+            GST Rate (%)
+            <input
+              type="number"
+              min="0"
+              max="99.99"
+              step="0.01"
+              value={form.taxRatePercent}
+              onChange={(e) => setForm((prev) => ({ ...prev, taxRatePercent: e.target.value }))}
             />
           </label>
 
@@ -607,6 +627,9 @@ export default function ProductVariantsPage() {
           ) : null}
 
           <h3>Stock</h3>
+          <p style={{ marginTop: -8, opacity: 0.8 }}>
+            Quantity and reorder controls are managed from Inventory. This page only manages size and stock-row structure.
+          </p>
           {sizeEnabled ? (
             <div className="row" style={{ gap: 8, alignItems: "flex-end" }}>
               <label style={{ flex: 1, minWidth: 220 }}>
@@ -659,21 +682,21 @@ export default function ProductVariantsPage() {
               ) : null}
               <div className="row" style={{ gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <label style={{ flex: 1, minWidth: 180 }}>
-                  Quantity
+                  Available
                   <input
                     type="number"
-                    min="0"
                     value={row.quantity}
-                    onChange={(e) => updateStockRow(index, { quantity: e.target.value })}
+                    disabled
+                    readOnly
                   />
                 </label>
                 <label style={{ flex: 1, minWidth: 180 }}>
                   Reorder Level
                   <input
                     type="number"
-                    min="0"
                     value={row.reorderLevel}
-                    onChange={(e) => updateStockRow(index, { reorderLevel: e.target.value })}
+                    disabled
+                    readOnly
                   />
                 </label>
               </div>

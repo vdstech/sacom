@@ -12,6 +12,7 @@ const CartLineSchema = new mongoose.Schema(
     imageUrl: { type: String, default: "", trim: true },
     unitPrice: { type: Number, default: 0, min: 0 },
     effectivePrice: { type: Number, default: 0, min: 0 },
+    taxRate: { type: Number, default: 0.05, min: 0, max: 0.9999 },
     quantity: { type: Number, default: 1, min: 0 },
     available: { type: Boolean, default: true },
   },

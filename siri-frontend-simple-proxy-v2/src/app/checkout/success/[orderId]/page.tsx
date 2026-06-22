@@ -51,30 +51,36 @@ export default function CheckoutSuccessPage() {
         {!order && !error ? <div className="section-copy">{STOREFRONT_STRINGS.product.loading}</div> : null}
         {order ? (
           <div className="checkout-success">
-            <div className="section-kicker">
-              {order.paymentStatus === "payment_failed"
-                ? STOREFRONT_STRINGS.checkout.failureTitle
-                : STOREFRONT_STRINGS.checkout.successTitle}
-            </div>
-            <h1 className="section-title">
-              {order.paymentStatus === "payment_failed"
-                ? STOREFRONT_STRINGS.checkout.failureTitle
-                : STOREFRONT_STRINGS.checkout.successTitle}
-            </h1>
-            <p className="section-copy">
-              {order.paymentStatus === "payment_failed"
-                ? STOREFRONT_STRINGS.checkout.failureSubtitle
-                : STOREFRONT_STRINGS.checkout.successSubtitle}
-            </p>
+            <div className="section-kicker">{STOREFRONT_STRINGS.checkout.successTitle}</div>
+            <h1 className="section-title">{STOREFRONT_STRINGS.checkout.successTitle}</h1>
+            <p className="section-copy">{STOREFRONT_STRINGS.checkout.successSubtitle}</p>
 
             <div className="checkout-success__grid">
               <div className="checkout-summary">
                 <div className="checkout-summary__row">
                   <span>{STOREFRONT_STRINGS.checkout.successOrder}</span>
-                  <strong>{order.id.slice(-6).toUpperCase()}</strong>
+                  <strong>{order.displayReference || order.id.slice(-6).toUpperCase()}</strong>
                 </div>
                 <div className="checkout-summary__row">
-                  <span>{STOREFRONT_STRINGS.checkout.successAmount}</span>
+                  <span>{STOREFRONT_STRINGS.checkout.subtotalLabel}</span>
+                  <strong>{formatMoney(Number(order.subtotal || 0))}</strong>
+                </div>
+                {Number(order.discountTotal || 0) > 0 ? (
+                  <div className="checkout-summary__row">
+                    <span>Discount</span>
+                    <strong>-{formatMoney(Number(order.discountTotal || 0))}</strong>
+                  </div>
+                ) : null}
+                <div className="checkout-summary__row">
+                  <span>{STOREFRONT_STRINGS.checkout.gstIncludedLabel}</span>
+                  <strong>{formatMoney(Number(order.pricingSnapshot?.includedTaxTotal ?? order.taxTotal ?? 0))}</strong>
+                </div>
+                <div className="checkout-summary__row">
+                  <span>{STOREFRONT_STRINGS.checkout.shippingLabel}</span>
+                  <strong>{formatMoney(Number(order.shippingTotal || 0))}</strong>
+                </div>
+                <div className="checkout-summary__row">
+                  <span>{STOREFRONT_STRINGS.checkout.totalPayableLabel}</span>
                   <strong>{formatMoney(Number(order.grandTotal ?? order.total ?? 0))}</strong>
                 </div>
                 <div className="checkout-summary__row">
@@ -106,6 +112,7 @@ export default function CheckoutSuccessPage() {
 
             <div className="checkout-summary">
               <div className="section-kicker">{STOREFRONT_STRINGS.checkout.successItems}</div>
+              <div className="section-copy">{STOREFRONT_STRINGS.checkout.priceInclusiveLabel}</div>
               <div className="checkout-lines checkout-lines--summary">
                 {order.items.map((item, index) => (
                   <div key={`${item.slug || item.title}-${index}`} className="checkout-summary__line">

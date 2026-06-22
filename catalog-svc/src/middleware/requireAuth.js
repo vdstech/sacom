@@ -1,5 +1,7 @@
 import jwt from "jsonwebtoken";
 import Session from "../models/sessionModel.js";
+import User from "../models/userModel.js";
+import Role from "../models/roleModel.js";
 
 function misconfigured(res) {
   const isDev = process.env.NODE_ENV !== "production";
@@ -57,7 +59,23 @@ export async function requireAuth(req, res, next) {
       systemLevel: decoded?.systemLevel || "NONE",
     };
 
-    req.user = { _id: session.user };
+    const user = await User.findById(session.user)
+      .select("_id email name roles isSystemUser systemLevel disabled")
+      .lean();
+
+    if (!user || user.disabled) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const roleDocs = Array.isArray(user.roles) && user.roles.length
+      ? await Role.find({ _id: { $in: user.roles } }).select("name").lean()
+      : [];
+
+    req.user = {
+      ...user,
+      roleNames: roleDocs.map((role) => String(role?.name || "").trim()).filter(Boolean),
+      primaryRole: String(roleDocs[0]?.name || "").trim(),
+    };
     req.effectivePermissions = new Set(session.effectivePermissions || []);
 
     // 5) Touch lastSeenAt at most once per minute (avoid DB write per request)

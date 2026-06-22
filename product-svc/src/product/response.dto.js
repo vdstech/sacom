@@ -11,6 +11,18 @@ function asNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function resolveDefaultTaxRate() {
+  const numeric = Number(process.env.DEFAULT_PRODUCT_TAX_RATE);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric >= 1) return 0.05;
+  return numeric;
+}
+
+function resolveTaxRate(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric >= 1) return resolveDefaultTaxRate();
+  return numeric;
+}
+
 function sanitizeString(value) {
   const text = asTrimmedString(value);
   return text || undefined;
@@ -162,7 +174,11 @@ function sanitizeStockEntries(stock = []) {
       return {
         stockKey,
         sizeLabel: asTrimmedString(entry?.sizeLabel),
-        quantity: Math.max(0, asNumber(entry?.quantity, 0)),
+        quantity: Math.max(0, asNumber(entry?.availableQty, asNumber(entry?.quantity, 0))),
+        availableQty: Math.max(0, asNumber(entry?.availableQty, asNumber(entry?.quantity, 0))),
+        reservedQty: Math.max(0, asNumber(entry?.reservedQty, 0)),
+        damagedQty: Math.max(0, asNumber(entry?.damagedQty, 0)),
+        lostQty: Math.max(0, asNumber(entry?.lostQty, 0)),
         reorderLevel: Math.max(0, asNumber(entry?.reorderLevel, 0)),
       };
     })
@@ -183,6 +199,8 @@ function sanitizeDefaultVariant(variant) {
     isDefault: !!variant.isDefault,
     price: asNumber(variant.price, 0),
     effectivePrice: asNumber(variant.effectivePrice, asNumber(variant.price, 0)),
+    taxRate: resolveTaxRate(variant.taxRate),
+    priceIncludesTax: true,
     discount: sanitizeDiscount(variant.discount),
     imageUrl: asTrimmedString(variant.imageUrl),
     colors: sanitizeColors(variant.colors, variant.color),
@@ -209,6 +227,23 @@ function sanitizeOtherVariantColors(colors = []) {
   return colors.map((swatch) => sanitizeColor(swatch)).filter(Boolean);
 }
 
+function sanitizeRatingSummary(summary = {}) {
+  const distribution = summary?.distribution || {};
+  return {
+    averageRating: asNumber(summary?.averageRating, 0),
+    reviewCount: Math.max(0, asNumber(summary?.reviewCount, 0)),
+    verifiedBuyerReviewCount: Math.max(0, asNumber(summary?.verifiedBuyerReviewCount, 0)),
+    distribution: {
+      1: Math.max(0, asNumber(distribution?.[1] ?? distribution?.one, 0)),
+      2: Math.max(0, asNumber(distribution?.[2] ?? distribution?.two, 0)),
+      3: Math.max(0, asNumber(distribution?.[3] ?? distribution?.three, 0)),
+      4: Math.max(0, asNumber(distribution?.[4] ?? distribution?.four, 0)),
+      5: Math.max(0, asNumber(distribution?.[5] ?? distribution?.five, 0)),
+    },
+    lastReviewedAt: summary?.lastReviewedAt || null,
+  };
+}
+
 export function mapStorefrontListItem(product = {}, computed = {}) {
   return {
     _id: product._id,
@@ -224,6 +259,7 @@ export function mapStorefrontListItem(product = {}, computed = {}) {
     availability: !!computed.availability,
     colorSummary: sanitizeColorSummary(computed.colorSummary),
     otherVariantColors: sanitizeOtherVariantColors(computed.otherVariantColors),
+    ratingSummary: sanitizeRatingSummary(product.ratingSummary),
   };
 }
 
@@ -238,6 +274,7 @@ export function mapAdminListItem(product = {}, computed = {}) {
     colorSummary: sanitizeColorSummary(computed.colorSummary),
     care: sanitizeCarePolicy(computed.care),
     returnPolicy: sanitizeReturnPolicy(computed.returnPolicy),
+    ratingSummary: sanitizeRatingSummary(product.ratingSummary),
   };
 }
 
@@ -258,6 +295,7 @@ export function mapAdminProductDetail(product = {}) {
     details: sanitizeDetails(product.details),
     isFeatured: !!product.isFeatured,
     isActive: !!product.isActive,
+    ratingSummary: sanitizeRatingSummary(product.ratingSummary),
   };
 }
 
@@ -266,6 +304,8 @@ export function mapStorefrontVariant(variant = {}, computed = {}) {
     _id: variant._id,
     price: asNumber(variant.price, 0),
     effectivePrice: asNumber(computed.effectivePrice, asNumber(variant.price, 0)),
+    taxRate: resolveTaxRate(variant.taxRate),
+    priceIncludesTax: true,
     discount: sanitizeDiscount(variant.discount),
     isDefault: !!variant.isDefault,
     isActive: !!variant.isActive,
@@ -300,6 +340,7 @@ export function mapStorefrontProductDetail(product = {}, computed = {}) {
     availability: !!computed.availability,
     colorSummary: sanitizeColorSummary(computed.colorSummary),
     otherVariantColors: sanitizeOtherVariantColors(computed.otherVariantColors),
+    ratingSummary: sanitizeRatingSummary(product.ratingSummary),
   };
 }
 
@@ -308,6 +349,8 @@ export function mapAdminVariantListItem(variant = {}, computed = {}) {
     _id: variant._id,
     productId: variant.productId,
     price: asNumber(variant.price, 0),
+    taxRate: resolveTaxRate(variant.taxRate),
+    priceIncludesTax: true,
     discount: sanitizeDiscount(variant.discount),
     images: sanitizeImageList(variant.images),
     colors: sanitizeColors(variant.colors, variant.color),

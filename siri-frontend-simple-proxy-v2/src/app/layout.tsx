@@ -5,8 +5,8 @@ import { NavBar } from "@/components/NavBar";
 import { StoreProvider } from "@/components/StoreProvider";
 
 export const metadata = {
-  title: "Siri Collections",
-  description: "Siri-style storefront with category browsing, filters, and cart",
+  title: "పూజిత | Sarees, Jewellery & Curated Collections",
+  description: "Boutique storefront for sarees, jewellery, blouses, dupattas, and curated collections.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

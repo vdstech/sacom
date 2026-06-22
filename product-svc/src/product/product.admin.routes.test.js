@@ -76,3 +76,13 @@ test("variant write routes require product:update", () => {
   assert.deepEqual(invokeGuard(updateGuard, ["product:update"]), { statusCode: 200, nextCalled: true });
   assert.deepEqual(invokeGuard(createGuard, ["product:create"]), { statusCode: 403, nextCalled: false });
 });
+
+test("review moderation routes require review permissions", () => {
+  const listGuard = getPermissionGuard("get", "/reviews");
+  const approveGuard = getPermissionGuard("post", "/reviews/:reviewId/approve");
+
+  assert.deepEqual(invokeGuard(listGuard, ["review:read"]), { statusCode: 200, nextCalled: true });
+  assert.deepEqual(invokeGuard(listGuard, ["review:moderate"]), { statusCode: 403, nextCalled: false });
+  assert.deepEqual(invokeGuard(approveGuard, ["review:moderate"]), { statusCode: 200, nextCalled: true });
+  assert.deepEqual(invokeGuard(approveGuard, ["review:read"]), { statusCode: 403, nextCalled: false });
+});

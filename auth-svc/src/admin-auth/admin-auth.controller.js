@@ -4,6 +4,7 @@ import crypto from "crypto";
 import User from "../admin-users/admin-users.model.js";
 import Role from "../admin-roles/admin-roles.model.js";
 import Session from "../admin-sessions/admin-sessions.model.js";
+import { recordAuditEvent } from "../audit/audit.service.js";
 
 import { verify } from "../security/password.js";
 import { computeEffectivePermissionsForUser } from "../admin-permissions/admin-permissions.service.js";
@@ -60,6 +61,18 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
+      await recordAuditEvent({
+        req,
+        action: "ADMIN_LOGIN_FAILED",
+        entityType: "AUTH_SESSION",
+        entityId: String(email || "").trim().toLowerCase(),
+        actor: {
+          actorType: "USER",
+          email: String(email || "").trim().toLowerCase(),
+        },
+        result: "FAILURE",
+        failureReason: "MISSING_CREDENTIALS",
+      });
       return res.status(400).json({ error: "email and password are required" });
     }
 
@@ -69,20 +82,71 @@ export const login = async (req, res) => {
     );
 
     if (!user) {
+      await recordAuditEvent({
+        req,
+        action: "ADMIN_LOGIN_FAILED",
+        entityType: "AUTH_SESSION",
+        entityId: String(email || "").trim().toLowerCase(),
+        actor: {
+          actorType: "USER",
+          email: String(email || "").trim().toLowerCase(),
+        },
+        result: "FAILURE",
+        failureReason: "INVALID_CREDENTIALS",
+      });
       return res.status(401).json({ error: "email / password is incorrect" });
     }
 
     if (user.disabled) {
+      await recordAuditEvent({
+        req,
+        action: "ADMIN_LOGIN_FAILED",
+        entityType: "AUTH_SESSION",
+        entityId: String(user._id),
+        actor: {
+          actorType: "USER",
+          userId: user._id,
+          email: user.email,
+        },
+        result: "FAILURE",
+        failureReason: "USER_DISABLED",
+      });
       return res.status(403).json({ error: "User is disabled" });
     }
 
     const passwordMatch = await verify(password, user.passwordHash);
     if (!passwordMatch) {
+      await recordAuditEvent({
+        req,
+        action: "ADMIN_LOGIN_FAILED",
+        entityType: "AUTH_SESSION",
+        entityId: String(user._id),
+        actor: {
+          actorType: "USER",
+          userId: user._id,
+          email: user.email,
+        },
+        result: "FAILURE",
+        failureReason: "INVALID_CREDENTIALS",
+      });
       return res.status(401).json({ error: "email / password is incorrect" });
     }
 
     // If you want to force password reset flows, block here
     if (user.force_reset) {
+      await recordAuditEvent({
+        req,
+        action: "ADMIN_LOGIN_FAILED",
+        entityType: "AUTH_SESSION",
+        entityId: String(user._id),
+        actor: {
+          actorType: "USER",
+          userId: user._id,
+          email: user.email,
+        },
+        result: "FAILURE",
+        failureReason: "PASSWORD_RESET_REQUIRED",
+      });
       return res.status(403).json({ error: "Password reset required", code: "FORCE_RESET" });
     }
 
@@ -127,6 +191,28 @@ export const login = async (req, res) => {
       .select("_id name")
       .lean();
 
+    await recordAuditEvent({
+      req,
+      action: "ADMIN_LOGIN_SUCCEEDED",
+      entityType: "AUTH_SESSION",
+      entityId: String(session._id),
+      entityDisplayId: user.email,
+      actor: {
+        actorType: "USER",
+        userId: user._id,
+        email: user.email,
+        role: String(roleDocs[0]?.name || user.systemLevel || "ADMIN_USER"),
+        roleNames: roleDocs.map((role) => String(role?.name || "").trim()).filter(Boolean),
+      },
+      after: {
+        sessionId: String(session._id),
+        expiresAt: session.expiresAt,
+      },
+      metadata: {
+        userId: String(user._id),
+      },
+    });
+
     return res.json({
       user: {
         id: user._id,
@@ -137,6 +223,18 @@ export const login = async (req, res) => {
     });
   } catch (e) {
     console.error("login failed", e);
+    await recordAuditEvent({
+      req,
+      action: "ADMIN_LOGIN_FAILED",
+      entityType: "AUTH_SESSION",
+      entityId: String(req.body?.email || "").trim().toLowerCase(),
+      actor: {
+        actorType: "USER",
+        email: String(req.body?.email || "").trim().toLowerCase(),
+      },
+      result: "FAILURE",
+      failureReason: e?.message || "LOGIN_ERROR",
+    }).catch(() => {});
     return res.status(500).json({ error: "Something went wrong. Try again later." });
   }
 };
@@ -197,7 +295,20 @@ export const logout = async (req, res) => {
     const refreshToken = readCookie(req, REFRESH_COOKIE_NAME);
     if (refreshToken) {
       const refreshTokenHash = sha256Hex(refreshToken);
+      const existingSession = await Session.findOne({ refreshTokenHash }).select("_id user").lean();
       await Session.deleteOne({ refreshTokenHash });
+      if (existingSession?._id) {
+        await recordAuditEvent({
+          req,
+          action: "ADMIN_LOGOUT_SUCCEEDED",
+          entityType: "AUTH_SESSION",
+          entityId: String(existingSession._id),
+          actor: {
+            actorType: "USER",
+            userId: existingSession.user,
+          },
+        });
+      }
     }
 
     clearRefreshCookie(res);

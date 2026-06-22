@@ -281,8 +281,8 @@ export function OrderOperationsDashboardView({
 
 export function OrderOperationsDashboard() {
   const { accessToken, me, refreshAccessToken } = useAuth();
-  const [tab, setTab] = useState<OrderOperationsTab>("processing");
-  const [summary, setSummary] = useState<OrderOperationsSummary>({ processing: 0, shipping: 0, shipped: 0, delivered: 0 });
+  const [tab, setTab] = useState<OrderOperationsTab>("delivery");
+  const [summary, setSummary] = useState<OrderOperationsSummary>({ processing: 0, shipping: 0, delivery: 0, shipped: 0, delivered: 0 });
   const [items, setItems] = useState<OrderOperationsItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -313,11 +313,11 @@ export function OrderOperationsDashboard() {
   }, [searchInput, courierInput]);
 
   useEffect(() => {
-    if (tab !== "shipped") {
+    if (!["delivery", "delivered"].includes(tab)) {
       if (courierInput) setCourierInput("");
       if (courierFilter) setCourierFilter("");
     }
-    if (tab === "shipped" && statusFilter) setStatusFilter("");
+    if (["delivery", "delivered"].includes(tab) && statusFilter) setStatusFilter("");
     setExpandedItemIds([]);
     setPage(1);
   }, [courierFilter, courierInput, statusFilter, tab]);
@@ -333,7 +333,7 @@ export function OrderOperationsDashboard() {
       });
       if (search) params.set("search", search);
       if (statusFilter) params.set("status", statusFilter);
-      if (tab === "shipped" && courierFilter) params.set("courier", courierFilter);
+      if (["delivery", "delivered"].includes(tab) && courierFilter) params.set("courier", courierFilter);
 
       const payload = await apiRequest<OrderOperationsResponse>(`/api/admin/orders/operations/items?${params.toString()}`, {
         token: accessToken,

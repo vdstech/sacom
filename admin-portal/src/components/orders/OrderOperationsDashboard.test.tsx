@@ -11,6 +11,7 @@ import type { OrderOperationsItem, OrderOperationsSummary, OrderOperationsTab } 
 const summary: OrderOperationsSummary = {
   processing: 3,
   shipping: 2,
+  delivery: 1,
   shipped: 1,
   delivered: 0,
 };
@@ -48,7 +49,7 @@ const shippedItem: OrderOperationsItem = {
 
 function buildProps(overrides: Partial<OrderOperationsDashboardViewProps> = {}): OrderOperationsDashboardViewProps {
   return {
-    tab: "shipped",
+    tab: "delivery",
     summary,
     items: [shippedItem],
     total: 1,
@@ -79,7 +80,7 @@ function buildProps(overrides: Partial<OrderOperationsDashboardViewProps> = {}):
 
 function StatefulView() {
   const [tab, setTab] = useState<OrderOperationsTab>("processing");
-  const items = tab === "shipped" ? [shippedItem] : [{ ...shippedItem, status: "RESERVED", orderItemId: "item-2" }];
+  const items = tab === "delivery" ? [shippedItem] : [{ ...shippedItem, status: "RESERVED", orderItemId: "item-2" }];
 
   return (
     <OrderOperationsDashboardView
@@ -99,7 +100,7 @@ describe("OrderOperationsDashboardView", () => {
     expect(screen.getByRole("button", { name: /Processing 3/i })).toBeInTheDocument();
     expect(screen.getByText("Filter by status")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Shipped 1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Mark Delivered 1/i }));
 
     expect(screen.getByText("Filter by courier")).toBeInTheDocument();
     expect(screen.queryByText("Filter by status")).not.toBeInTheDocument();
@@ -129,7 +130,7 @@ describe("OrderOperationsDashboardView", () => {
     expect(screen.queryByText(/Order Item ID:/i)).not.toBeInTheDocument();
   });
 
-  it("shows mark delivered only for shipped items in the shipped tab", () => {
+  it("shows mark delivered only for shipped items in the delivery tab", () => {
     const shippedProps = buildProps();
     const nonShippedProps = buildProps({
       tab: "processing",

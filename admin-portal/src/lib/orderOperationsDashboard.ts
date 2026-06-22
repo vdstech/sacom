@@ -1,10 +1,10 @@
-export type OrderOperationsTab = "processing" | "shipping" | "shipped";
-export type FutureOrderOperationsTab = OrderOperationsTab | "delivered";
+export type OrderOperationsTab = "processing" | "shipping" | "delivery" | "delivered";
 export type OrderOperationsSort = "newest" | "oldest" | "price_desc" | "price_asc";
 
 export type OrderOperationsSummary = {
   processing: number;
   shipping: number;
+  delivery: number;
   shipped: number;
   delivered: number;
 };
@@ -56,7 +56,8 @@ export type OrderOperationsResponse = {
 export const ORDER_OPERATIONS_TABS: Array<{ key: OrderOperationsTab; label: string }> = [
   { key: "processing", label: "Processing" },
   { key: "shipping", label: "Shipping" },
-  { key: "shipped", label: "Shipped" },
+  { key: "delivery", label: "Mark Delivered" },
+  { key: "delivered", label: "Delivered" },
 ];
 
 export const ORDER_OPERATION_SORT_OPTIONS: Array<{ value: OrderOperationsSort; label: string }> = [
@@ -72,7 +73,7 @@ export function isSystemAdmin(systemLevel?: string | null) {
 }
 
 export function canMarkDelivered(item: Pick<OrderOperationsItem, "status">, tab: OrderOperationsTab) {
-  return tab === "shipped" && String(item.status || "").toUpperCase() === "SHIPPED";
+  return tab === "delivery" && String(item.status || "").toUpperCase() === "SHIPPED";
 }
 
 export function getOrderOperationStatusOptions(tab: OrderOperationsTab) {

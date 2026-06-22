@@ -3,6 +3,7 @@ import Product from "./product.model.js";
 import Variant from "../variant/variant.model.js";
 import Inventory from "../inventory/inventory.model.js";
 import Category from "../category/category.model.js";
+import { overlayVariantStockWithInventory } from "../inventory/inventory.projection.js";
 import {
   mapAdminListItem,
   mapAdminProductDetail,
@@ -18,6 +19,8 @@ import {
   normalizeReturnPolicyWithDefaults,
   normalizeShippingWithDefaults,
 } from "./defaultMetadata.js";
+import { recordAuditEvent } from "../audit/audit.service.js";
+import { buildEmptyRatingSummary } from "../review/review.model.js";
 
 // This controller is the product read/write boundary for both admin and storefront
 // traffic. It owns the runtime effective-price calculation, storefront facet
@@ -228,7 +231,27 @@ export function buildPriceRange(products = [], variantsByProduct = new Map()) {
 
 function buildAvailability(stock = []) {
   if (!Array.isArray(stock) || !stock.length) return false;
-  return stock.some((entry) => Number(entry?.quantity || 0) > 0);
+  return stock.some((entry) => Number(entry?.availableQty ?? entry?.quantity ?? 0) > 0);
+}
+
+async function applyCanonicalInventoryToVariants(variants = []) {
+  if (!variants.length) return [];
+  const variantIds = variants.map((variant) => variant._id).filter(Boolean);
+  const inventoryRows = variantIds.length
+    ? await Inventory.find({ variantId: { $in: variantIds } })
+      .select("variantId stockKey sizeLabel quantity availableQty reservedQty damagedQty lostQty reorderLevel")
+      .lean()
+    : [];
+  const inventoryByVariant = new Map();
+  for (const row of inventoryRows) {
+    const key = String(row.variantId || "");
+    if (!inventoryByVariant.has(key)) inventoryByVariant.set(key, []);
+    inventoryByVariant.get(key).push(row);
+  }
+
+  return variants.map((variant) =>
+    overlayVariantStockWithInventory(variant, inventoryByVariant.get(String(variant._id || "")) || [])
+  );
 }
 
 function buildColorSummary(variants = []) {
@@ -520,6 +543,7 @@ function buildProductWriteShape(body, { categoryId, details }) {
     care: normalizeCarePolicy(body.care),
     returnPolicy: normalizeReturnPolicy(body.returnPolicy),
     details,
+    ratingSummary: buildEmptyRatingSummary(),
     isActive: body.isActive !== undefined ? !!body.isActive : true,
     isFeatured: !!body.isFeatured,
     createdBy: body.createdBy || null,
@@ -542,9 +566,10 @@ async function loadActiveVariantsByProductIds(productIds = []) {
   const variants = await Variant.find({ productId: { $in: productIds }, isActive: true })
     .sort({ isDefault: -1, createdAt: 1 })
     .lean();
+  const canonicalVariants = await applyCanonicalInventoryToVariants(variants);
 
   const byProduct = new Map();
-  for (const variant of variants) {
+  for (const variant of canonicalVariants) {
     const key = String(variant.productId);
     if (!byProduct.has(key)) byProduct.set(key, []);
     byProduct.get(key).push(variant);
@@ -690,6 +715,14 @@ export async function create(req, res) {
       productDraft.slug = await buildUniqueProductSlug(baseSlug);
       try {
         const doc = await Product.create(productDraft);
+        await recordAuditEvent({
+          req,
+          action: "PRODUCT_CREATED",
+          entityType: "PRODUCT",
+          entityId: String(doc._id),
+          entityDisplayId: doc.slug,
+          after: doc.toObject ? doc.toObject() : doc,
+        });
         return res.status(201).json(doc);
       } catch (err) {
         if (isSlugDuplicateError(err) && attempt < MAX_SLUG_WRITE_RETRIES - 1) {
@@ -803,7 +836,7 @@ export async function adminFacets(req, res) {
 export async function adminGetById(req, res) {
   try {
     const doc = await Product.findById(req.params.id)
-      .select("title slug description shortDescription categoryId currency tags images shipping care returnPolicy details isFeatured isActive")
+      .select("title slug description shortDescription categoryId currency tags images shipping care returnPolicy details ratingSummary isFeatured isActive")
       .lean();
     if (!doc) return res.status(404).json({ error: "Product not found" });
     return res.json(mapAdminProductDetail(doc));
@@ -830,7 +863,7 @@ export async function listByCategorySlug(req, res) {
 export async function getBySlug(req, res) {
   try {
     const doc = await Product.findOne({ slug: String(req.params.slug).toLowerCase() })
-      .select("title slug description shortDescription currency images shipping care returnPolicy details categoryId")
+      .select("title slug description shortDescription currency images shipping care returnPolicy details categoryId ratingSummary")
       .lean();
     if (!doc) return res.status(404).json({ error: "Product not found" });
 
@@ -838,9 +871,10 @@ export async function getBySlug(req, res) {
       ? await Category.findById(doc.categoryId).select("slug").lean()
       : null;
 
-    const variants = await Variant.find({ productId: doc._id, isActive: true })
+    const rawVariants = await Variant.find({ productId: doc._id, isActive: true })
       .sort({ isDefault: -1, createdAt: 1 })
       .lean();
+    const variants = await applyCanonicalInventoryToVariants(rawVariants);
 
     const variantsWithComputed = variants.map((variant) => ({
       variant,
@@ -939,6 +973,16 @@ export async function update(req, res) {
       throw lastError || new Error("Failed to update product");
     }
 
+    await recordAuditEvent({
+      req,
+      action: "PRODUCT_UPDATED",
+      entityType: "PRODUCT",
+      entityId: String(doc._id),
+      entityDisplayId: doc.slug,
+      before: existing,
+      after: doc.toObject ? doc.toObject() : doc,
+    });
+
     res.json(doc);
   } catch (err) {
     if (isSlugDuplicateError(err)) return res.status(409).json({ error: "Product slug already exists" });
@@ -953,7 +997,7 @@ export async function softDelete(req, res) {
       return res.status(400).json({ error: "productId must be a valid ObjectId" });
     }
 
-    const product = await Product.findById(productId).select("_id").lean();
+    const product = await Product.findById(productId).lean();
     if (!product) return res.status(404).json({ error: "Product not found" });
 
     const variants = await Variant.find({ productId }).select("_id").lean();
@@ -974,14 +1018,26 @@ export async function softDelete(req, res) {
       return res.status(500).json({ error: "Failed to delete product" });
     }
 
-    res.json({
+    const payload = {
       success: true,
       deleted: {
         products: Number(productResult.deletedCount || 0),
         variants: Number(variantResult.deletedCount || 0),
         inventory: Number(inventoryResult.deletedCount || 0),
       },
+    };
+
+    await recordAuditEvent({
+      req,
+      action: "PRODUCT_DELETED",
+      entityType: "PRODUCT",
+      entityId: String(productId),
+      entityDisplayId: String(product.slug || ""),
+      before: product,
+      metadata: payload.deleted,
     });
+
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ error: err.message || "Failed to delete product" });
   }
@@ -990,12 +1046,23 @@ export async function softDelete(req, res) {
 export async function publish(req, res) {
   try {
     const { isActive } = req.body;
+    const existing = await Product.findById(req.params.id).lean();
+    if (!existing) return res.status(404).json({ error: "Product not found" });
     const doc = await Product.findByIdAndUpdate(
       req.params.id,
       { isActive: !!isActive, updatedBy: req.user?._id || null },
       { new: true }
     );
     if (!doc) return res.status(404).json({ error: "Product not found" });
+    await recordAuditEvent({
+      req,
+      action: "PRODUCT_PUBLISH_STATE_UPDATED",
+      entityType: "PRODUCT",
+      entityId: String(doc._id),
+      entityDisplayId: doc.slug,
+      before: { isActive: !!existing.isActive },
+      after: { isActive: !!doc.isActive },
+    });
     res.json(doc);
   } catch (err) {
     res.status(500).json({ error: err.message || "Failed to publish/unpublish" });

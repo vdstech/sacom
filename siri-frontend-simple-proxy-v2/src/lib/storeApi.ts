@@ -22,6 +22,7 @@ export type StoreCategoryNode = {
   name: string;
   slug?: string;
   path?: string;
+  imageUrl?: string;
   parent?: string | null;
   sortOrder?: number;
   isActive?: boolean;
@@ -52,6 +53,37 @@ export type StoreDiscount = {
   label?: string;
 };
 
+export type ProductRatingSummary = {
+  averageRating?: number;
+  reviewCount?: number;
+  verifiedBuyerReviewCount?: number;
+  distribution?: Record<number, number>;
+  lastReviewedAt?: string | null;
+};
+
+export type ProductReview = {
+  id: string;
+  productId: string;
+  variantId?: string;
+  customerDisplayName: string;
+  rating: number;
+  title: string;
+  comment: string;
+  verifiedBuyer: boolean;
+  verificationOrderId?: string;
+  verificationOrderItemId?: string;
+  status?: string;
+  moderationReason?: string;
+  moderationNote?: string;
+  moderationSource?: string;
+  moderationSignals?: string[];
+  approvedAt?: string | null;
+  rejectedAt?: string | null;
+  hiddenAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
 export type ProductListItem = {
   _id: string;
   title: string;
@@ -62,10 +94,13 @@ export type ProductListItem = {
   care?: CarePolicy | null;
   returnPolicy?: ReturnPolicy | null;
   availability?: boolean;
+  ratingSummary?: ProductRatingSummary | null;
   defaultVariant?: {
     variantId?: string;
     price?: number;
     effectivePrice?: number;
+    taxRate?: number;
+    priceIncludesTax?: boolean;
     discount?: StoreDiscount;
     imageUrl?: string;
     colors?: Array<{ name?: string; hex?: string }>;
@@ -77,6 +112,8 @@ export type ProductVariant = {
   _id: string;
   price?: number;
   effectivePrice?: number;
+  taxRate?: number;
+  priceIncludesTax?: boolean;
   discount?: StoreDiscount;
   isDefault?: boolean;
   isActive?: boolean;
@@ -105,6 +142,15 @@ export type ProductDetail = ProductListItem & {
   variants?: ProductVariant[];
 };
 
+export type ProductReviewListResponse = {
+  reviews: ProductReview[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  summary?: ProductRatingSummary | null;
+};
+
 export type CartItem = {
   itemId: string;
   productId: string;
@@ -117,8 +163,13 @@ export type CartItem = {
   imageUrl?: string;
   unitPrice: number;
   effectivePrice: number;
+  taxRate?: number;
+  priceIncludesTax?: boolean;
   quantity: number;
   available: boolean;
+  lineDiscountTotal?: number;
+  taxableBaseTotal?: number;
+  includedTaxTotal?: number;
   lineTotal: number;
 };
 
@@ -126,6 +177,10 @@ export type CartResponse = {
   cartToken: string;
   itemCount: number;
   subtotal: number;
+  discountTotal?: number;
+  taxableBaseTotal?: number;
+  includedTaxTotal?: number;
+  priceIncludesTax?: boolean;
   items: CartItem[];
   expiresAt?: string;
   warnings?: Array<{
@@ -201,4 +256,14 @@ export async function fetchStore<T>(path: string, init?: RequestInit): Promise<T
 export async function fetchCategoryTree() {
   const payload = await fetchStore<StoreCategoryNode[]>("/api/categories/tree");
   return Array.isArray(payload) ? payload : [];
+}
+
+export async function fetchProductReviews(productId: string, page = 1, limit = 10) {
+  const query = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+  return fetchStore<ProductReviewListResponse>(
+    `/products/${encodeURIComponent(productId)}/reviews?${query.toString()}`
+  );
 }

@@ -26,7 +26,7 @@ describe("OrderOperationsDashboard container", () => {
   beforeEach(() => {
     apiRequestMock.mockReset();
     apiRequestMock.mockResolvedValue({
-      summary: { processing: 0, shipping: 0, shipped: 0, delivered: 0 },
+      summary: { processing: 0, shipping: 0, delivery: 0, shipped: 0, delivered: 0 },
       items: [],
       total: 0,
       page: 1,

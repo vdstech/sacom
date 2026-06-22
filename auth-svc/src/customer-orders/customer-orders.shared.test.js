@@ -140,7 +140,7 @@ test("order fulfillment rollup matches the BDD parent state model", () => {
   );
 });
 
-test("payment rollup still preserves payment failed and refund states", () => {
+test("payment rollup preserves explicit payment states without deriving refund states", () => {
   assert.equal(
     resolveOrderPaymentStatus({
       paymentStatus: "payment_failed",
@@ -151,17 +151,9 @@ test("payment rollup still preserves payment failed and refund states", () => {
 
   assert.equal(
     resolveOrderPaymentStatus({
-      paymentStatus: "paid",
+      paymentStatus: "manual_external_resolution",
       items: [{ fulfillmentStatus: "RETURN_REQUESTED" }, { fulfillmentStatus: "SHIPPED" }],
     }),
-    "refund_pending"
-  );
-
-  assert.equal(
-    resolveOrderPaymentStatus({
-      paymentStatus: "paid",
-      items: [{ fulfillmentStatus: "CANCEL_RESTOCKED" }, { fulfillmentStatus: "CANCEL_DAMAGED" }],
-    }),
-    "refunded"
+    "manual_external_resolution"
   );
 });

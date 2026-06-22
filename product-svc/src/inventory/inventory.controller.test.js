@@ -1,11 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
+import Inventory from "./inventory.model.js";
+import AuditLog from "../audit/audit-log.model.js";
+import Variant from "../variant/variant.model.js";
 import {
   buildInventoryDashboardSummary,
   buildInventoryListResponse,
   buildInventorySearchClause,
   resolveAvailableQuantity,
+  updateInventory,
 } from "./inventory.controller.js";
 
 test("buildInventorySearchClause matches stock key and size label text", () => {
@@ -124,4 +128,122 @@ test("buildInventoryDashboardSummary separates low-stock and out-of-stock varian
   assert.equal(summary.lowStockVariants[0].availableStock, 1);
   assert.equal(summary.outOfStockVariants[0].availableStock, 0);
   assert.match(summary.lowStockVariants[0].variantSummary, /Red/);
+});
+
+test("buildInventoryDashboardSummary uses canonical inventory quantities instead of stale variant projection", () => {
+  const productId = new mongoose.Types.ObjectId();
+  const variantId = new mongoose.Types.ObjectId();
+
+  const summary = buildInventoryDashboardSummary({
+    threshold: 2,
+    limit: 8,
+    items: [
+      {
+        _id: "inventory-1",
+        productId,
+        variantId,
+        stockKey: "SKU-1",
+        sizeLabel: "36",
+        quantity: 0,
+        availableQty: 0,
+        reorderLevel: 1,
+      },
+    ],
+    productMap: new Map([
+      [String(productId), { _id: productId, title: "Silk Saree", slug: "silk-saree" }],
+    ]),
+    variantMap: new Map([
+      [String(variantId), { _id: variantId, colors: [{ name: "Red" }], sizeLabel: "36", stock: [{ stockKey: "SKU-1", availableQty: 4, reorderLevel: 10 }] }],
+    ]),
+  });
+
+  assert.equal(summary.lowStockVariantsCount, 0);
+  assert.equal(summary.outOfStockVariantsCount, 1);
+  assert.equal(summary.outOfStockVariants[0].availableStock, 0);
+  assert.equal(summary.outOfStockVariants[0].reorderLevel, 1);
+});
+
+test("updateInventory writes an audit record for quantity changes", async () => {
+  const originalFindById = Inventory.findById;
+  const originalFindByIdAndUpdate = Inventory.findByIdAndUpdate;
+  const originalVariantFindById = Variant.findById;
+  const originalAuditCreate = AuditLog.create;
+  const auditEntries = [];
+  const inventoryId = new mongoose.Types.ObjectId("665f45f70f00000000000088");
+
+  Inventory.findById = () => ({
+    lean: async () => ({
+      _id: inventoryId,
+      stockKey: "SKU-1",
+      quantity: 2,
+      availableQty: 2,
+      reorderLevel: 1,
+      productId: new mongoose.Types.ObjectId("665f45f70f00000000000089"),
+      variantId: new mongoose.Types.ObjectId("665f45f70f00000000000090"),
+    }),
+  });
+  Inventory.findByIdAndUpdate = async () => ({
+    _id: inventoryId,
+    stockKey: "SKU-1",
+    quantity: 5,
+    availableQty: 5,
+    reorderLevel: 2,
+    productId: new mongoose.Types.ObjectId("665f45f70f00000000000089"),
+    variantId: new mongoose.Types.ObjectId("665f45f70f00000000000090"),
+    toObject() { return this; },
+  });
+  Variant.findById = async () => ({
+    stock: [{ stockKey: "SKU-1", quantity: 1, availableQty: 1, reorderLevel: 1 }],
+    async save() {
+      return this;
+    },
+  });
+  AuditLog.create = async (payload) => {
+    auditEntries.push(payload);
+    return payload;
+  };
+
+  const req = {
+    params: { id: String(inventoryId) },
+    body: { quantity: 5, reorderLevel: 2 },
+    user: {
+      _id: new mongoose.Types.ObjectId("665f45f70f00000000000091"),
+      email: "inventory@example.com",
+      name: "Inventory Manager",
+      primaryRole: "INVENTORY_MANAGER",
+      roleNames: ["INVENTORY_MANAGER"],
+    },
+    method: "PATCH",
+    originalUrl: `/api/admin/products/inventory/${String(inventoryId)}`,
+    ip: "127.0.0.1",
+    headers: { "user-agent": "node-test" },
+  };
+  const res = {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.body = payload;
+      return this;
+    },
+  };
+
+  try {
+    await updateInventory(req, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(auditEntries.length, 2);
+    assert.equal(auditEntries[0].action, "INVENTORY_RECONCILIATION_MISMATCH");
+    assert.equal(auditEntries[1].action, "INVENTORY_UPDATED");
+    assert.equal(auditEntries[1].changes.before.quantity, 2);
+    assert.equal(auditEntries[1].changes.after.quantity, 5);
+    assert.equal(auditEntries[1].metadata.deltas.quantity, 3);
+  } finally {
+    Inventory.findById = originalFindById;
+    Inventory.findByIdAndUpdate = originalFindByIdAndUpdate;
+    Variant.findById = originalVariantFindById;
+    AuditLog.create = originalAuditCreate;
+  }
 });

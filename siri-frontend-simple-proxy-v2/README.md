@@ -15,7 +15,7 @@ Browser URL:
 
 ## Request Flow
 - Browser requests go through the local Next proxy at `/api/proxy/...`
-- The Next server forwards to gateway, defaulting to `https://localhost:4000`
+- The Next server forwards to gateway, defaulting to `http://localhost:4000`
 - Server-side fetches also use `GATEWAY_INTERNAL_URL`
 
 ## Current Storefront Behavior
@@ -34,6 +34,6 @@ Browser URL:
 - Saved addresses
 
 ## Notes
-- Admin portal uses `https://localhost:3000`
+- Admin portal uses `http://localhost:3000` by default
 - This storefront intentionally uses `3001` to avoid port conflict with admin
 - If local proxy calls fail, verify that gateway and the three backend services are running

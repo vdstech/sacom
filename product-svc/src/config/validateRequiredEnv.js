@@ -7,6 +7,9 @@ export function validateRequiredEnv(service, logger, keys = []) {
     throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
   }
 
+  const enableTls = String(process.env.ENABLE_TLS || "false").toLowerCase() === "true";
+  if (!enableTls) return;
+
   for (const fileKey of ["TLS_CERT_PATH", "TLS_KEY_PATH"]) {
     const p = String(process.env[fileKey] || "").trim();
     if (!fs.existsSync(p)) {

@@ -179,10 +179,11 @@ function InventoryDashboardContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const activeTab = normalizeInventoryTab(searchParams.get("tab"));
+  const initialCategoryId = searchParams.get("categoryId") || "";
 
   const [items, setItems] = useState<InventoryDoc[]>([]);
   const [categories, setCategories] = useState<CategoryDoc[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("updated_desc");
@@ -208,6 +209,10 @@ function InventoryDashboardContent() {
     setSearch("");
     setSort(activeTab === "overview" ? "updated_desc" : activeTab === "out-of-stock" ? "updated_desc" : "stock_asc");
   }, [activeTab]);
+
+  useEffect(() => {
+    setSelectedCategoryId(initialCategoryId);
+  }, [initialCategoryId]);
 
   const loadCategories = async () => {
     try {

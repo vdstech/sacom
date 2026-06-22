@@ -9,12 +9,14 @@ import cors from "cors";
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { getTlsOptions } from './tls.js'
 
-if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
-}
-
 const app = express()
-const insecureHttpsAgent = new https.Agent({ rejectUnauthorized: false })
+const ENABLE_TLS = String(process.env.ENABLE_TLS || 'false').toLowerCase() === 'true'
+const allowInsecureUpstreamTls = String(process.env.ALLOW_INSECURE_UPSTREAM_TLS || 'false').toLowerCase() === 'true'
+const corsOrigins = String(process.env.CORS_ORIGINS || "http://localhost:3000,https://localhost:3000,http://localhost:3001,https://localhost:3001")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean)
+const insecureHttpsAgent = allowInsecureUpstreamTls ? new https.Agent({ rejectUnauthorized: false }) : undefined
 
 const TRUST_PROXY = String(process.env.TRUST_PROXY || 'false').toLowerCase() === 'true';
 if (TRUST_PROXY) app.set('trust proxy', 1);
@@ -30,12 +32,7 @@ const logger = pino({base: {service: 'gateway-svc'}})
 app.use(pinoHttp({logger}))
 
 const corsOptions = {
-  origin: [
-    "http://localhost:3000",
-    "https://localhost:3000",
-    "http://localhost:3001",
-    "https://localhost:3001",
-  ],
+  origin: corsOrigins,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -44,14 +41,16 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
-const AUTH_SVC_URL = process.env.AUTH_SVC_URL || 'https://localhost:4443'
-const CATALOG_SVC_URL = process.env.CATALOG_SVC_URL || 'https://localhost:4444'
-const PRODUCT_SVC_URL = process.env.PRODUCT_SVC_URL || 'https://localhost:4445'
+const AUTH_SVC_URL = process.env.AUTH_SVC_URL || 'http://localhost:4443'
+const CATALOG_SVC_URL = process.env.CATALOG_SVC_URL || 'http://localhost:4444'
+const PRODUCT_SVC_URL = process.env.PRODUCT_SVC_URL || 'http://localhost:4445'
+const ADMIN_PORTAL_URL = process.env.ADMIN_PORTAL_URL || 'http://localhost:3000'
+const STOREFRONT_URL = process.env.STOREFRONT_URL || 'http://localhost:3001'
 
 const proxyOptions = (target, mountPath) => ({
   target,
   changeOrigin: true,
-  secure: false,
+  secure: !allowInsecureUpstreamTls,
   agent: insecureHttpsAgent,
   logLevel: process.env.PROXY_LOG_LEVEL || 'warn',
   pathRewrite: (path) => `${mountPath}${path}`
@@ -93,8 +92,8 @@ app.get('/', (req, res) => {
         <h1>Sacom Gateway</h1>
         <p>This service proxies backend APIs. The browser UI is served by the frontends below, not by the gateway root.</p>
         <ul>
-          <li>Admin portal: <a href="https://localhost:3000">https://localhost:3000</a></li>
-          <li>Customer storefront: <a href="http://localhost:3001">http://localhost:3001</a></li>
+          <li>Admin portal: <a href="${ADMIN_PORTAL_URL}">${ADMIN_PORTAL_URL}</a></li>
+          <li>Customer storefront: <a href="${STOREFRONT_URL}">${STOREFRONT_URL}</a></li>
           <li>Gateway health: <a href="/health">/health</a></li>
         </ul>
         <p>Common API prefixes: <code>/auth</code>, <code>/api</code>, <code>/api/categories</code>, <code>/api/admin/products</code>, <code>/products</code>, <code>/cart</code>.</p>
@@ -111,12 +110,18 @@ app.get('/health', (req, res) => {
 const port = process.env.PORT || 4000
 const redirectServer = String(process.env.REDIRECT_SERVER || 'false').toLowerCase() === 'true'
 const httpPort = process.env.HTTP_PORT || 4001
-const tlsOptions = getTlsOptions()
-https.createServer(tlsOptions, app).listen(port, () => {
-  logger.info(`Gateway Service running on port ${port} with TLS`)
-})
+if (ENABLE_TLS) {
+  const tlsOptions = getTlsOptions()
+  https.createServer(tlsOptions, app).listen(port, () => {
+    logger.info(`Gateway Service running on port ${port} with TLS`)
+  })
+} else {
+  http.createServer(app).listen(port, () => {
+    logger.info(`Gateway Service running on port ${port} without TLS`)
+  })
+}
 
-if (redirectServer) {
+if (ENABLE_TLS && redirectServer) {
   http.createServer((req, res) => {
     const host = req.headers.host || `localhost:${port}`
     const targetHost = host.includes(':') ? host.split(':')[0] + `:${port}` : `${host}:${port}`

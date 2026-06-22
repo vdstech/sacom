@@ -4,29 +4,44 @@ import CustomerAddress from "../customer-addresses/customer-addresses.model.js";
 import CustomerOrder from "./customer-orders.model.js";
 import StorefrontCartRead from "./customer-orders.storefront-cart.model.js";
 import StorefrontCategoryRead from "./customer-orders.storefront-category.model.js";
+import StorefrontInventoryRead from "./customer-orders.storefront-inventory.model.js";
 import StorefrontProductRead from "./customer-orders.storefront-product.model.js";
 import StorefrontVariantRead from "./customer-orders.storefront-variant.model.js";
 import PhysicalHandover from "./customer-orders.handover.model.js";
 import CancellationCase from "./customer-orders.cancellation-case.model.js";
 import ReturnExchangeCase from "./customer-orders.return-exchange-case.model.js";
 import InventoryLedger from "./customer-orders.inventory-ledger.model.js";
-import AuditLog from "./customer-orders.audit-log.model.js";
 import OrderShipment from "./customer-orders.shipment.model.js";
 import ShippingLabel from "./customer-orders.shipping-label.model.js";
 import StorefrontCustomer from "../customer-auth/customer-auth.model.js";
 import ExchangeCoupon from "./customer-orders.exchange-coupon.model.js";
 import NotificationPlaceholder from "./customer-orders.notification-placeholder.model.js";
 import {
+  applyPricingRules,
+  calculateDiscountedPrice,
+  resolveVariantTaxRate,
+} from "./customer-orders.pricing.js";
+import {
   buildOrderItemId,
   CANCELLATION_QUEUE_STATUSES,
+  DEFAULT_TARGET_COMPLETION_HOURS,
+  deriveLaneAssignedAt,
+  deriveLastActionedAt,
+  deriveTargetCompletionDate,
   FINAL_CANCELLATION_STATUSES,
+  FULFILLMENT_DELAY_HOURS,
+  FULFILLMENT_VIOLATION_HOURS,
   isCustomerCancellableItem,
   isCustomerPackedCancellationRequestable,
   isCustomerReturnableItem,
   isCustomerShippingCancellationRequestable,
+  isTrackedFulfillmentLane,
   isPreShipmentStatus,
   normalizeItemFulfillmentStatus,
   normalizePaymentStatus,
+  normalizeSlaStatus,
+  resolveFulfillmentStage,
+  resolveItemSlaStatus,
   resolveOrderFulfillmentStatus,
   resolveOrderPaymentStatus,
 } from "./customer-orders.shared.js";
@@ -60,10 +75,15 @@ import {
   restockCancelledStockEntry,
   shipReservedStockEntry,
 } from "./customer-orders.stock.js";
+import { recordAuditEvent } from "../audit/audit.service.js";
 
 function asNumber(value, fallback = 0) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function roundMoney(value) {
+  return Math.round((asNumber(value, 0) + Number.EPSILON) * 100) / 100;
 }
 
 function normalizeString(value, fallback = "") {
@@ -76,22 +96,91 @@ function createHttpError(message, statusCode = 500) {
   return error;
 }
 
-function calculateDiscountedPrice(price, discount) {
-  const base = Math.max(0, asNumber(price, 0));
-  const type = normalizeString(discount?.type || "none").toLowerCase();
-  const value = Math.max(0, asNumber(discount?.value, 0));
-
-  if (type === "percent") return Math.max(0, Math.round(base - (base * Math.min(100, value)) / 100));
-  if (type === "flat") return Math.max(0, Math.round(base - value));
-  return base;
-}
-
 function normalizeCartToken(value) {
   return normalizeString(value).replace(/[^a-zA-Z0-9_-]+/g, "");
 }
 
 function getActorId(actorId) {
   return mongoose.isValidObjectId(actorId) ? actorId : null;
+}
+
+function asDate(value) {
+  const date = value instanceof Date ? value : new Date(value || "");
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function addHours(date, hours) {
+  const base = asDate(date);
+  if (!base) return null;
+  return new Date(base.getTime() + (hours * 60 * 60 * 1000));
+}
+
+function getHoursSince(value, now = new Date()) {
+  const date = asDate(value);
+  if (!date) return 0;
+  return Math.max(0, (now.getTime() - date.getTime()) / (60 * 60 * 1000));
+}
+
+function initializeFulfillmentSlaFields(item, order, now = new Date()) {
+  const placedAt = asDate(order?.placedAt) || now;
+  if (!item.targetCompletionDate) {
+    item.targetCompletionDate = addHours(placedAt, DEFAULT_TARGET_COMPLETION_HOURS);
+  }
+  if (!item.laneAssignedAt) {
+    item.laneAssignedAt = deriveLaneAssignedAt(item, placedAt) || placedAt;
+  }
+  if (!item.lastActionedAt) {
+    item.lastActionedAt = deriveLastActionedAt(item, placedAt) || placedAt;
+  }
+  if (!normalizeString(item.slaStatus)) {
+    item.slaStatus = "ON_TRACK";
+  }
+}
+
+function refreshFulfillmentSlaFields(item, order, {
+  now = new Date(),
+  resetLaneAssignedAt = false,
+} = {}) {
+  initializeFulfillmentSlaFields(item, order, now);
+  item.lastActionedAt = now;
+  if (resetLaneAssignedAt) {
+    item.laneAssignedAt = now;
+  }
+
+  const stage = resolveFulfillmentStage(item);
+  if (isTrackedFulfillmentLane(stage)) {
+    const laneHours = item.laneAssignedAt ? getHoursSince(item.laneAssignedAt, now) : 0;
+    if (laneHours >= FULFILLMENT_VIOLATION_HOURS) {
+      item.slaStatus = "VIOLATED";
+      return;
+    }
+    item.slaStatus = getHoursSince(item.lastActionedAt, now) >= FULFILLMENT_DELAY_HOURS ? "DELAYED" : "ON_TRACK";
+    return;
+  }
+
+  item.slaStatus = "ON_TRACK";
+}
+
+function syncDerivedFulfillmentTrackingFields(item, order, now = new Date()) {
+  const placedAt = asDate(order?.placedAt) || now;
+  const targetCompletionDate = deriveTargetCompletionDate(item, placedAt);
+  const laneAssignedAt = deriveLaneAssignedAt(item, placedAt);
+  const lastActionedAt = deriveLastActionedAt(item, placedAt);
+  const slaStatus = resolveItemSlaStatus(item, { orderPlacedAt: placedAt, now });
+
+  item.targetCompletionDate = targetCompletionDate || null;
+  item.laneAssignedAt = laneAssignedAt || null;
+  item.lastActionedAt = lastActionedAt || null;
+  item.slaStatus = normalizeSlaStatus(slaStatus, "ON_TRACK");
+}
+
+function assertExpectedStatus(item, expectedStatus) {
+  const expected = normalizeItemFulfillmentStatus(expectedStatus, "");
+  if (!expected) return;
+  const current = normalizeItemFulfillmentStatus(item?.fulfillmentStatus, "RESERVED");
+  if (current !== expected) {
+    throw createHttpError("This task changed after you loaded it. Refresh and try again.", 409);
+  }
 }
 
 function applyDerivedOrderState(order) {
@@ -132,6 +221,10 @@ function buildExchangeCouponCode() {
   return `EXC-${crypto.randomBytes(6).toString("hex").toUpperCase()}`;
 }
 
+function buildOrderDisplayId() {
+  return `ORD-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+}
+
 async function loadCart(cartToken) {
   const normalizedToken = normalizeCartToken(cartToken);
   if (!normalizedToken) throw createHttpError("cartToken is required", 400);
@@ -151,10 +244,11 @@ function buildOrderItemSnapshot(line, product, variant, stockRow, categorySnapsh
   const quantity = Math.max(1, Math.floor(asNumber(line?.quantity, 1)));
   const listUnitPrice = Math.max(0, asNumber(variant?.price, 0));
   const finalUnitPrice = calculateDiscountedPrice(listUnitPrice, variant?.discount);
-  const catalogDiscountAmount = Math.max(0, listUnitPrice - finalUnitPrice);
-  const lineSubtotal = listUnitPrice * quantity;
-  const lineDiscountTotal = catalogDiscountAmount * quantity;
-  const lineGrandTotal = finalUnitPrice * quantity;
+  const taxRate = resolveVariantTaxRate(variant?.taxRate);
+  const catalogDiscountAmount = roundMoney(Math.max(0, listUnitPrice - finalUnitPrice));
+  const lineSubtotal = roundMoney(listUnitPrice * quantity);
+  const lineDiscountTotal = roundMoney(catalogDiscountAmount * quantity);
+  const lineGrandTotal = roundMoney(finalUnitPrice * quantity);
   const imageUrl = normalizeString(variant?.images?.[0]?.url || product?.images?.[0]?.url);
 
   return {
@@ -179,6 +273,10 @@ function buildOrderItemSnapshot(line, product, variant, stockRow, categorySnapsh
     courierName: "",
     outboundTrackingNumber: "",
     collectionTrackingNumber: "",
+    targetCompletionDate: null,
+    laneAssignedAt: null,
+    lastActionedAt: null,
+    slaStatus: "ON_TRACK",
     cancelRequestedAt: null,
     pickedAt: null,
     pickedBy: null,
@@ -230,8 +328,11 @@ function buildOrderItemSnapshot(line, product, variant, stockRow, categorySnapsh
     promoDiscountValue: 0,
     promoDiscountLabel: "",
     promoDiscountAmount: 0,
+    taxRate,
+    priceIncludesTax: true,
     finalUnitPrice,
     lineSubtotal,
+    lineTaxableBaseTotal: 0,
     lineTaxTotal: 0,
     lineShippingTotal: 0,
     lineDiscountTotal,
@@ -256,12 +357,19 @@ async function buildPreparedOrder(cart) {
       throw createHttpError("Cart contains invalid items", 409);
     }
 
-    const [product, variant] = await Promise.all([
+    const [product, variant, inventoryRow] = await Promise.all([
       StorefrontProductRead.findOne({ _id: productId, isActive: true })
         .select("_id title slug images isActive categoryId")
         .lean(),
       StorefrontVariantRead.findOne({ _id: variantId, productId, isActive: true })
-        .select("_id productId price discount images stock isActive")
+        .select("_id productId price discount taxRate images stock isActive")
+        .lean(),
+      StorefrontInventoryRead.findOne({
+        productId,
+        variantId,
+        stockKey,
+      })
+        .select("stockKey sizeLabel quantity availableQty reservedQty damagedQty lostQty reorderLevel")
         .lean(),
     ]);
 
@@ -278,9 +386,10 @@ async function buildPreparedOrder(cart) {
       categorySnapshot = categorySnapshots.get(categoryId) || null;
     }
 
-    const stockRow = (Array.isArray(variant.stock) ? variant.stock : []).find(
+    const projectedStockRow = (Array.isArray(variant.stock) ? variant.stock : []).find(
       (entry) => normalizeString(entry?.stockKey).toUpperCase() === stockKey
     );
+    const stockRow = inventoryRow || projectedStockRow;
 
     if (!stockRow) throw createHttpError("A selected size is no longer available", 409);
     const availableQty = resolveAvailableStockQuantity(stockRow);
@@ -297,19 +406,23 @@ async function buildPreparedOrder(cart) {
     });
   }
 
-  const subtotal = preparedItems.reduce((sum, item) => sum + Math.max(0, asNumber(item.lineSubtotal, 0)), 0);
-  const discountTotal = preparedItems.reduce((sum, item) => sum + Math.max(0, asNumber(item.lineDiscountTotal, 0)), 0);
-  const grandTotal = preparedItems.reduce((sum, item) => sum + Math.max(0, asNumber(item.lineGrandTotal, 0)), 0);
   const itemCount = preparedItems.reduce((sum, item) => sum + Math.max(0, asNumber(item.quantity, 0)), 0);
+  const pricing = applyPricingRules({ items: preparedItems, couponAppliedAmount: 0, currency: "INR" });
 
   return {
-    items: preparedItems,
+    items: pricing.items,
     stockOperations,
-    subtotal,
-    discountTotal,
-    shippingTotal: 0,
-    taxTotal: 0,
-    grandTotal,
+    subtotal: pricing.subtotal,
+    discountTotal: pricing.discountTotal,
+    taxableBaseTotal: pricing.taxableBaseTotal,
+    shippingTotal: pricing.shippingTotal,
+    taxTotal: pricing.taxTotal,
+    grandTotal: pricing.grandTotal,
+    discountedMerchandiseTotal: pricing.discountedMerchandiseTotal,
+    discountedMerchandiseTotalBeforeCoupon: pricing.discountedMerchandiseTotalBeforeCoupon,
+    couponAppliedAmount: pricing.couponAppliedAmount,
+    pricingVersion: pricing.pricingVersion,
+    pricingSnapshot: pricing.snapshot,
     itemCount,
   };
 }
@@ -385,17 +498,73 @@ async function createAuditLog({
   remarks = "",
   metadata = {},
 }) {
-  await AuditLog.create({
-    userId: getActorId(userId),
-    role,
+  const entityType = itemId ? "ORDER_ITEM" : "ORDER";
+  const entityId = itemId || String(orderId || "");
+  await recordAuditEvent({
     action,
-    oldStatus,
-    newStatus,
-    referenceId: itemId || String(orderId || ""),
-    orderId: mongoose.isValidObjectId(orderId) ? orderId : null,
-    orderItemId: itemId,
-    remarks,
-    metadata,
+    entityType,
+    entityId,
+    entityDisplayId: String(orderId || entityId),
+    actor: {
+      actorType: role === "CUSTOMER" ? "CUSTOMER" : "USER",
+      userId: getActorId(userId),
+      role,
+      roleNames: role ? [role] : [],
+    },
+    before: oldStatus ? { status: oldStatus } : undefined,
+    after: newStatus ? { status: newStatus } : undefined,
+    metadata: {
+      orderId: mongoose.isValidObjectId(orderId) ? String(orderId) : "",
+      orderItemId: itemId || "",
+      remarks,
+      ...(metadata || {}),
+    },
+  });
+}
+
+async function createInventoryMovementAuditLog({
+  item,
+  orderId,
+  actorId = null,
+  actorRole = "",
+  action,
+  quantity = 0,
+  availableChange = 0,
+  reservedChange = 0,
+  damagedChange = 0,
+  lostChange = 0,
+  referenceType = "",
+  referenceId = "",
+  metadata = {},
+}) {
+  await recordAuditEvent({
+    action,
+    entityType: "INVENTORY",
+    entityId: normalizeString(item?.stockKey).toUpperCase(),
+    entityDisplayId: normalizeString(item?.stockKey).toUpperCase(),
+    actor: {
+      actorType: actorRole === "CUSTOMER" ? "CUSTOMER" : "USER",
+      userId: getActorId(actorId),
+      role: actorRole,
+      roleNames: actorRole ? [actorRole] : [],
+    },
+    metadata: {
+      stockKey: normalizeString(item?.stockKey).toUpperCase(),
+      productId: mongoose.isValidObjectId(item?.productId) ? String(item.productId) : "",
+      variantId: mongoose.isValidObjectId(item?.variantId) ? String(item.variantId) : "",
+      orderId: mongoose.isValidObjectId(orderId) ? String(orderId) : "",
+      orderItemId: buildOrderItemId(item),
+      quantity: asNumber(quantity, 0),
+      deltas: {
+        available: asNumber(availableChange, 0),
+        reserved: asNumber(reservedChange, 0),
+        damaged: asNumber(damagedChange, 0),
+        lost: asNumber(lostChange, 0),
+      },
+      referenceType: normalizeString(referenceType),
+      referenceId: normalizeString(referenceId),
+      ...(metadata || {}),
+    },
   });
 }
 
@@ -415,26 +584,28 @@ export async function finalizePreparedCustomerOrder({
   const appliedOperations = [];
   let order = null;
 
-  const paymentStatus = normalizeString(requestedPaymentStatus, "paid").toLowerCase() === "payment_failed"
-    ? "payment_failed"
-    : "paid";
+  const paymentStatus = "paid";
   const couponCode = normalizeString(couponSnapshot?.couponCode);
   const couponAppliedAmount = Math.max(0, asNumber(couponSnapshot?.appliedAmount, 0));
   const couponForfeitedAmount = Math.max(0, asNumber(couponSnapshot?.forfeitedAmount, 0));
   const couponDiscountTotal = couponCode ? couponAppliedAmount : 0;
-  const subtotal = Math.max(0, asNumber(prepared?.subtotal, 0));
-  const catalogDiscountTotal = Math.max(0, asNumber(prepared?.discountTotal, 0));
-  const shippingTotal = Math.max(0, asNumber(prepared?.shippingTotal, 0));
-  const taxTotal = Math.max(0, asNumber(prepared?.taxTotal, 0));
-  const sourceGrandTotal = Math.max(0, asNumber(prepared?.grandTotal, 0));
-  const grandTotal = Math.max(0, sourceGrandTotal - couponAppliedAmount);
+  const pricing = applyPricingRules({
+    items: prepared?.items || [],
+    couponAppliedAmount,
+    currency: "INR",
+    couponCode,
+  });
+  const subtotal = Math.max(0, asNumber(pricing.subtotal, 0));
+  const catalogDiscountTotal = Math.max(0, asNumber(pricing.catalogDiscountTotal, 0));
+  const shippingTotal = pricing.shippingTotal;
+  const taxTotal = pricing.taxTotal;
+  const grandTotal = pricing.grandTotal;
+  const displayId = buildOrderDisplayId();
 
   try {
-    if (paymentStatus !== "payment_failed") {
-      for (const operation of prepared.stockOperations || []) {
-        await reserveStockEntry(operation);
-        appliedOperations.push(operation);
-      }
+    for (const operation of prepared.stockOperations || []) {
+      await reserveStockEntry(operation);
+      appliedOperations.push(operation);
     }
 
     order = await CustomerOrder.create({
@@ -443,44 +614,61 @@ export async function finalizePreparedCustomerOrder({
       paymentStatus,
       fulfillmentStatus: "PLACED",
       currency: "INR",
-      pricingVersion: 1,
+      pricingVersion: pricing.pricingVersion,
       couponCode,
       couponDiscountTotal,
       couponAppliedAmount,
       couponForfeitedAmount,
       subtotal,
-      discountTotal: catalogDiscountTotal + couponDiscountTotal,
+      discountTotal: pricing.discountTotal,
       shippingTotal,
+      taxableBaseTotal: pricing.taxableBaseTotal,
       taxTotal,
       grandTotal,
       total: grandTotal,
       itemCount: Math.max(0, asNumber(prepared?.itemCount, 0)),
-      paymentReference: "",
+      displayId,
+      pricingSnapshot: pricing.snapshot,
       addressSnapshot,
-      items: prepared?.items || [],
+      items: pricing.items,
       placedAt: new Date(),
     });
 
-    if (paymentStatus !== "payment_failed") {
-      for (const item of order.items || []) {
-        const operation = getValidatedStockOperation(item, "Invalid stock operation for reservation ledger");
-        await createInventoryLedgerEntry({
-          item,
-          orderId: order._id,
-          movementType: "RESERVE",
-          quantity: operation.quantity,
-          availableChange: -operation.quantity,
-          reservedChange: operation.quantity,
-          referenceType: "ORDER",
-          referenceId: buildOrderItemId(item),
-        });
-      }
+    for (const item of order.items || []) {
+      initializeFulfillmentSlaFields(item, order, order.placedAt || new Date());
+    }
+    await order.save();
 
-      if (clearCartOnSuccess && cart) {
-        cart.items = [];
-        cart.lastSeenAt = new Date();
-        await cart.save();
-      }
+    for (const item of order.items || []) {
+      const operation = getValidatedStockOperation(item, "Invalid stock operation for reservation ledger");
+      await createInventoryLedgerEntry({
+        item,
+        orderId: order._id,
+        movementType: "RESERVE",
+        quantity: operation.quantity,
+        availableChange: -operation.quantity,
+        reservedChange: operation.quantity,
+        referenceType: "ORDER",
+        referenceId: buildOrderItemId(item),
+      });
+      await createInventoryMovementAuditLog({
+        item,
+        orderId: order._id,
+        actorId,
+        actorRole,
+        action: "INVENTORY_RESERVED",
+        quantity: operation.quantity,
+        availableChange: -operation.quantity,
+        reservedChange: operation.quantity,
+        referenceType: "ORDER",
+        referenceId: buildOrderItemId(item),
+      });
+    }
+
+    if (clearCartOnSuccess && cart) {
+      cart.items = [];
+      cart.lastSeenAt = new Date();
+      await cart.save();
     }
 
     await createAuditLog({
@@ -488,12 +676,21 @@ export async function finalizePreparedCustomerOrder({
       userId: actorId,
       role: actorRole,
       action: "ORDER_CREATED",
-      newStatus: paymentStatus === "payment_failed" ? "PAYMENT_FAILED" : "PLACED",
+      newStatus: "PLACED",
       metadata: {
+        displayId,
         couponCode,
         couponAppliedAmount,
         couponForfeitedAmount,
         paymentStatus,
+        pricingRuleVersion: pricing.pricingVersion,
+        taxMode: pricing.snapshot?.taxMode,
+        taxRatesUsed: pricing.snapshot?.taxRatesUsed || [],
+        includedTaxTotal: taxTotal,
+        shippingRule: pricing.snapshot?.shippingRule || null,
+        shippingCharge: shippingTotal,
+        payableTotal: grandTotal,
+        pricingSnapshot: pricing.snapshot,
       },
     });
 
@@ -743,6 +940,19 @@ async function finalizeBeforePickingCancellation({ order, item, actorId, actorRo
     referenceId: buildOrderItemId(item),
     remarks: reason,
   });
+  await createInventoryMovementAuditLog({
+    item,
+    orderId: order._id,
+    actorId,
+    actorRole,
+    action: "INVENTORY_RELEASED",
+    quantity: operation.quantity,
+    availableChange: operation.quantity,
+    reservedChange: -operation.quantity,
+    referenceType: source,
+    referenceId: buildOrderItemId(item),
+    metadata: { reason: normalizeString(reason), source: normalizeString(source) },
+  });
 
   const previousStatus = normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED");
   item.fulfillmentStatus = "CANCELLED_BEFORE_PICKING";
@@ -751,6 +961,7 @@ async function finalizeBeforePickingCancellation({ order, item, actorId, actorRo
   item.cancellationSource = source;
   item.cancellationReason = reason;
   item.cancelledAt = new Date();
+  syncDerivedFulfillmentTrackingFields(item, order, item.cancelledAt);
   applyDerivedOrderState(order);
   await order.save();
 
@@ -778,6 +989,7 @@ async function openCancellationCase({ order, item, actorId, actorRole = "", sour
   item.cancellationSource = source;
   item.cancellationReason = reason;
   if (source === "ADMIN") item.adminCancelledAt = new Date();
+  refreshFulfillmentSlaFields(item, order, { now: item.cancelRequestedAt, resetLaneAssignedAt: false });
 
   await CancellationCase.create({
     orderId: order._id,
@@ -1015,7 +1227,7 @@ export async function startReturnExchangeInvestigation({ caseId, actorId, actorR
     itemId: caseDoc.orderItemId,
     userId: actorId,
     role: actorRole,
-    action: "RETURN_EXCHANGE_START_INVESTIGATION",
+    action: "ISSUE_EXCHANGE_INVESTIGATION_STARTED",
     oldStatus: previousStatus,
     newStatus: nextStatus,
     metadata: { caseId: String(caseDoc._id), kind: caseDoc.kind },
@@ -1047,7 +1259,7 @@ export async function acceptReturnExchangeCase({ caseId, actorId, actorRole = "R
     itemId: caseDoc.orderItemId,
     userId: actorId,
     role: actorRole,
-    action: "RETURN_EXCHANGE_ACCEPTED",
+    action: "ISSUE_EXCHANGE_APPROVED",
     oldStatus: previousStatus,
     newStatus: nextStatus,
     remarks: caseDoc.decisionNote,
@@ -1080,7 +1292,7 @@ export async function rejectReturnExchangeCase({ caseId, actorId, actorRole = "R
     itemId: caseDoc.orderItemId,
     userId: actorId,
     role: actorRole,
-    action: "RETURN_EXCHANGE_REJECTED",
+    action: "ISSUE_EXCHANGE_REJECTED",
     oldStatus: previousStatus,
     newStatus: nextStatus,
     remarks: caseDoc.decisionNote,
@@ -1120,7 +1332,7 @@ export async function updateReturnExchangeTracking({
     itemId: caseDoc.orderItemId,
     userId: actorId,
     role: actorRole,
-    action: "RETURN_EXCHANGE_TRACKING_UPDATED",
+    action: "ISSUE_EXCHANGE_TRACKING_UPDATED",
     oldStatus: previousStatus,
     newStatus: nextStatus,
     remarks: validation.returnTrackingNumber,
@@ -1151,7 +1363,7 @@ export async function receiveReturnExchangeCase({ caseId, actorId, actorRole = "
     itemId: caseDoc.orderItemId,
     userId: actorId,
     role: actorRole,
-    action: "RETURN_EXCHANGE_RECEIVED",
+    action: "ISSUE_EXCHANGE_RECEIVED",
     oldStatus: previousStatus,
     newStatus: nextStatus,
     metadata: { caseId: String(caseDoc._id), kind: caseDoc.kind },
@@ -1183,10 +1395,10 @@ export async function createReturnExchangePlaceholder({ caseId, actorId, actorRo
     itemId: caseDoc.orderItemId,
     userId: actorId,
     role: actorRole,
-    action: "RETURN_EXCHANGE_PLACEHOLDER_CREATED",
+    action: "MANUAL_EXTERNAL_RESOLUTION_NOTED",
     oldStatus: previousStatus,
     newStatus: nextStatus,
-    metadata: { caseId: String(caseDoc._id), kind: caseDoc.kind },
+    metadata: { caseId: String(caseDoc._id), kind: caseDoc.kind, resolutionMode: "MANUAL_EXTERNAL" },
   });
 
   return caseDoc.toObject();
@@ -1279,7 +1491,7 @@ export async function generateExchangeCoupon({ caseId, actorId, actorRole = "RET
     itemId: caseDoc.orderItemId,
     userId: actorId,
     role: actorRole,
-    action: "EXCHANGE_COUPON_GENERATED",
+    action: "CASH_COUPON_CREATED",
     oldStatus: previousStatus,
     newStatus: "EXCHANGE_COUPON_GENERATED",
     metadata: {
@@ -1294,11 +1506,12 @@ export async function generateExchangeCoupon({ caseId, actorId, actorRole = "RET
   return caseDoc.toObject();
 }
 
-export async function pickProcessingOrderItem({ orderId, itemId, actorId, actorRole = "PROCESSING_MANAGER" }) {
+export async function pickProcessingOrderItem({ orderId, itemId, actorId, actorRole = "PROCESSING_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   const previousStatus = normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED");
   if (previousStatus !== "RESERVED") {
     throw createHttpError(previousStatus === "PICKED_FROM_WAREHOUSE" ? "Item is already picked" : "Only reserved items can be picked", 409);
@@ -1308,6 +1521,7 @@ export async function pickProcessingOrderItem({ orderId, itemId, actorId, actorR
   item.physicalOwner = "PROCESSING_MANAGER";
   item.pickedAt = new Date();
   item.pickedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.pickedAt, resetLaneAssignedAt: false });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1322,11 +1536,12 @@ export async function pickProcessingOrderItem({ orderId, itemId, actorId, actorR
   return order.toObject();
 }
 
-export async function handoverOrderItemToPackaging({ orderId, itemId, actorId, actorRole = "PROCESSING_MANAGER" }) {
+export async function handoverOrderItemToPackaging({ orderId, itemId, actorId, actorRole = "PROCESSING_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   const previousStatus = normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED");
   if (previousStatus !== "PICKED_FROM_WAREHOUSE" || normalizeString(item.physicalOwner).toUpperCase() !== "PROCESSING_MANAGER") {
     throw createHttpError("Only picked processing-owned items can be handed to packaging", 409);
@@ -1344,6 +1559,7 @@ export async function handoverOrderItemToPackaging({ orderId, itemId, actorId, a
 
   item.fulfillmentStatus = "HANDED_TO_PACKAGING";
   item.handedToPackagingAt = new Date();
+  refreshFulfillmentSlaFields(item, order, { now: item.handedToPackagingAt, resetLaneAssignedAt: true });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1358,11 +1574,12 @@ export async function handoverOrderItemToPackaging({ orderId, itemId, actorId, a
   return order.toObject();
 }
 
-export async function packagingConfirmReceipt({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER" }) {
+export async function packagingConfirmReceipt({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   const handover = await getPendingHandover(itemId, "PROCESSING_TO_PACKAGING");
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "HANDED_TO_PACKAGING") {
     throw createHttpError("Packaging receipt confirmation is required for handed-over items only", 409);
@@ -1377,6 +1594,7 @@ export async function packagingConfirmReceipt({ orderId, itemId, actorId, actorR
   item.physicalOwner = "PACKAGING_MANAGER";
   item.packagingReceivedAt = new Date();
   item.packagingReceivedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.packagingReceivedAt, resetLaneAssignedAt: false });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1391,11 +1609,12 @@ export async function packagingConfirmReceipt({ orderId, itemId, actorId, actorR
   return order.toObject();
 }
 
-export async function packagingRejectReceipt({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER", reason = "ITEM_NOT_RECEIVED" }) {
+export async function packagingRejectReceipt({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER", reason = "ITEM_NOT_RECEIVED", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   const handover = await getPendingHandover(itemId, "PROCESSING_TO_PACKAGING");
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "HANDED_TO_PACKAGING") {
     throw createHttpError("Only handed-over packaging items can be rejected", 409);
@@ -1409,6 +1628,7 @@ export async function packagingRejectReceipt({ orderId, itemId, actorId, actorRo
 
   item.fulfillmentStatus = "PICKED_FROM_WAREHOUSE";
   item.physicalOwner = "PROCESSING_MANAGER";
+  refreshFulfillmentSlaFields(item, order, { now: handover.receivedAt || new Date(), resetLaneAssignedAt: true });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1424,11 +1644,12 @@ export async function packagingRejectReceipt({ orderId, itemId, actorId, actorRo
   return order.toObject();
 }
 
-export async function startPackagingOrderItem({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER" }) {
+export async function startPackagingOrderItem({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   const previousStatus = normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED");
   if (previousStatus !== "PACKAGING_RECEIVED") {
     throw createHttpError("Packaging receipt confirmation is required before packing", 409);
@@ -1437,6 +1658,7 @@ export async function startPackagingOrderItem({ orderId, itemId, actorId, actorR
   item.fulfillmentStatus = "PACKAGING_IN_PROGRESS";
   item.packagingStartedAt = new Date();
   item.packagingStartedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.packagingStartedAt, resetLaneAssignedAt: false });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1451,11 +1673,12 @@ export async function startPackagingOrderItem({ orderId, itemId, actorId, actorR
   return order.toObject();
 }
 
-export async function verifyPackageOrderItem({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER" }) {
+export async function verifyPackageOrderItem({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "PACKAGING_IN_PROGRESS") {
     throw createHttpError("Only packaging-in-progress items can be verified", 409);
   }
@@ -1463,6 +1686,7 @@ export async function verifyPackageOrderItem({ orderId, itemId, actorId, actorRo
   item.packageVerificationStatus = "VERIFIED";
   item.packageVerifiedAt = new Date();
   item.packageVerifiedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.packageVerifiedAt, resetLaneAssignedAt: false });
   await order.save();
   await createAuditLog({
     orderId: order._id,
@@ -1476,11 +1700,12 @@ export async function verifyPackageOrderItem({ orderId, itemId, actorId, actorRo
   return order.toObject();
 }
 
-export async function printShippingLabel({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER" }) {
+export async function printShippingLabel({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "PACKAGING_IN_PROGRESS") {
     throw createHttpError("Only packaging-in-progress items can print labels", 409);
   }
@@ -1491,6 +1716,7 @@ export async function printShippingLabel({ orderId, itemId, actorId, actorRole =
   item.labelStatus = "PRINTED";
   item.labelPrintedAt = new Date();
   item.labelPrintedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.labelPrintedAt, resetLaneAssignedAt: false });
   await updateShippingLabel(item, order._id, actorId, "print");
   await order.save();
   await createAuditLog({
@@ -1505,11 +1731,12 @@ export async function printShippingLabel({ orderId, itemId, actorId, actorRole =
   return order.toObject();
 }
 
-export async function reprintShippingLabel({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER", reason = "LABEL_DAMAGED" }) {
+export async function reprintShippingLabel({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER", reason = "LABEL_DAMAGED", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "PACKAGING_IN_PROGRESS") {
     throw createHttpError("Only packaging-in-progress items can reprint labels", 409);
   }
@@ -1521,6 +1748,7 @@ export async function reprintShippingLabel({ orderId, itemId, actorId, actorRole
   item.labelPrintedAt = new Date();
   item.labelPrintedBy = getActorId(actorId);
   item.labelReprintCount = Math.max(0, asNumber(item.labelReprintCount, 0)) + 1;
+  refreshFulfillmentSlaFields(item, order, { now: item.labelPrintedAt, resetLaneAssignedAt: false });
   await updateShippingLabel(item, order._id, actorId, "reprint", item.labelReprintReason);
   await order.save();
   await createAuditLog({
@@ -1536,11 +1764,12 @@ export async function reprintShippingLabel({ orderId, itemId, actorId, actorRole
   return order.toObject();
 }
 
-export async function markOrderItemPacked({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER" }) {
+export async function markOrderItemPacked({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   const validation = {
     packageVerificationStatus: item.packageVerificationStatus,
     labelStatus: item.labelStatus,
@@ -1559,6 +1788,7 @@ export async function markOrderItemPacked({ orderId, itemId, actorId, actorRole 
   item.physicalOwner = "PACKAGING_MANAGER";
   item.packedAt = new Date();
   item.packedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.packedAt, resetLaneAssignedAt: false });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1573,11 +1803,12 @@ export async function markOrderItemPacked({ orderId, itemId, actorId, actorRole 
   return order.toObject();
 }
 
-export async function handoverOrderItemToShipping({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER" }) {
+export async function handoverOrderItemToShipping({ orderId, itemId, actorId, actorRole = "PACKAGING_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "PACKED" || normalizeString(item.physicalOwner).toUpperCase() !== "PACKAGING_MANAGER") {
     throw createHttpError("Only packed packaging-owned items can be handed to shipping", 409);
   }
@@ -1594,6 +1825,7 @@ export async function handoverOrderItemToShipping({ orderId, itemId, actorId, ac
 
   item.fulfillmentStatus = "HANDED_TO_SHIPPING";
   item.handedToShippingAt = new Date();
+  refreshFulfillmentSlaFields(item, order, { now: item.handedToShippingAt, resetLaneAssignedAt: true });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1608,11 +1840,12 @@ export async function handoverOrderItemToShipping({ orderId, itemId, actorId, ac
   return order.toObject();
 }
 
-export async function shippingConfirmReceipt({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR" }) {
+export async function shippingConfirmReceipt({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   const handover = await getPendingHandover(itemId, "PACKAGING_TO_SHIPPING");
   const previousStatus = normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED");
   const cancelledPendingReceipt = isCancelledPendingShippingReceipt(item, handover);
@@ -1629,6 +1862,7 @@ export async function shippingConfirmReceipt({ orderId, itemId, actorId, actorRo
   item.physicalOwner = "SHIPPING_OPERATOR";
   item.shippingReceivedAt = new Date();
   item.shippingReceivedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.shippingReceivedAt, resetLaneAssignedAt: false });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1643,11 +1877,12 @@ export async function shippingConfirmReceipt({ orderId, itemId, actorId, actorRo
   return order.toObject();
 }
 
-export async function shippingRejectReceipt({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR", reason = "ITEM_NOT_RECEIVED" }) {
+export async function shippingRejectReceipt({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR", reason = "ITEM_NOT_RECEIVED", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   const handover = await getPendingHandover(itemId, "PACKAGING_TO_SHIPPING");
   const previousStatus = normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED");
   const cancelledPendingReceipt = isCancelledPendingShippingReceipt(item, handover);
@@ -1663,6 +1898,7 @@ export async function shippingRejectReceipt({ orderId, itemId, actorId, actorRol
 
   item.fulfillmentStatus = cancelledPendingReceipt ? "CANCEL_REQUESTED" : "PACKED";
   item.physicalOwner = "PACKAGING_MANAGER";
+  refreshFulfillmentSlaFields(item, order, { now: handover.receivedAt || new Date(), resetLaneAssignedAt: true });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1678,11 +1914,12 @@ export async function shippingRejectReceipt({ orderId, itemId, actorId, actorRol
   return order.toObject();
 }
 
-export async function startShippingOrderItem({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR" }) {
+export async function startShippingOrderItem({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "SHIPPING_RECEIVED") {
     throw createHttpError("Shipping receipt confirmation is required before shipping", 409);
   }
@@ -1690,6 +1927,7 @@ export async function startShippingOrderItem({ orderId, itemId, actorId, actorRo
   item.fulfillmentStatus = "SHIPPING_IN_PROGRESS";
   item.shippingStartedAt = new Date();
   item.shippingStartedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.shippingStartedAt, resetLaneAssignedAt: false });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1704,13 +1942,14 @@ export async function startShippingOrderItem({ orderId, itemId, actorId, actorRo
   return order.toObject();
 }
 
-export async function assignShipmentCourier({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR", courierName }) {
+export async function assignShipmentCourier({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR", courierName, expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const courier = normalizeString(courierName);
   if (!courier) throw createHttpError("Courier is required", 400);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "SHIPPING_IN_PROGRESS") {
     throw createHttpError("Only shipping-in-progress items can assign a courier", 409);
   }
@@ -1718,6 +1957,7 @@ export async function assignShipmentCourier({ orderId, itemId, actorId, actorRol
   item.courierName = courier;
   item.courierAssignedAt = new Date();
   item.courierAssignedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.courierAssignedAt, resetLaneAssignedAt: false });
   await updateShipmentRecord(item, order._id, actorId);
   await order.save();
   await createAuditLog({
@@ -1733,13 +1973,14 @@ export async function assignShipmentCourier({ orderId, itemId, actorId, actorRol
   return order.toObject();
 }
 
-export async function assignShipmentTrackingNumber({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR", trackingNumber }) {
+export async function assignShipmentTrackingNumber({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR", trackingNumber, expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const tracking = normalizeString(trackingNumber);
   if (!tracking) throw createHttpError("Tracking number is required", 400);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "SHIPPING_IN_PROGRESS") {
     throw createHttpError("Only shipping-in-progress items can receive a tracking number", 409);
   }
@@ -1750,6 +1991,7 @@ export async function assignShipmentTrackingNumber({ orderId, itemId, actorId, a
   item.outboundTrackingNumber = tracking;
   item.trackingNumberEnteredAt = new Date();
   item.trackingNumberEnteredBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.trackingNumberEnteredAt, resetLaneAssignedAt: false });
   await updateShipmentRecord(item, order._id, actorId);
   await order.save();
   await createAuditLog({
@@ -1765,11 +2007,12 @@ export async function assignShipmentTrackingNumber({ orderId, itemId, actorId, a
   return order.toObject();
 }
 
-export async function markOrderItemShipped({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR" }) {
+export async function markOrderItemShipped({ orderId, itemId, actorId, actorRole = "SHIPPING_OPERATOR", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "SHIPPING_IN_PROGRESS") {
     throw createHttpError("Only shipping-in-progress items can be marked shipped", 409);
   }
@@ -1792,11 +2035,23 @@ export async function markOrderItemShipped({ orderId, itemId, actorId, actorRole
     referenceType: "SHIPMENT",
     referenceId: item.outboundTrackingNumber,
   });
+  await createInventoryMovementAuditLog({
+    item,
+    orderId: order._id,
+    actorId,
+    actorRole,
+    action: "INVENTORY_SHIPPED",
+    quantity: operation.quantity,
+    reservedChange: -operation.quantity,
+    referenceType: "SHIPMENT",
+    referenceId: item.outboundTrackingNumber,
+  });
 
   item.fulfillmentStatus = "SHIPPED";
   item.physicalOwner = "COURIER";
   item.shippedAt = new Date();
   item.shippedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.shippedAt, resetLaneAssignedAt: false });
   await updateShipmentRecord(item, order._id, actorId);
   applyDerivedOrderState(order);
   await order.save();
@@ -1813,11 +2068,131 @@ export async function markOrderItemShipped({ orderId, itemId, actorId, actorRole
   return order.toObject();
 }
 
-export async function markOrderItemDelivered({ orderId, itemId, actorId, actorRole = "ORDER_ADMIN" }) {
+export async function shipOrderItem({
+  orderId,
+  itemId,
+  actorId,
+  actorRole = "SHIPPING_OPERATOR",
+  courierName,
+  trackingNumber,
+  expectedStatus = "",
+}) {
+  if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
+  const courier = normalizeString(courierName);
+  const tracking = normalizeString(trackingNumber);
+  if (!courier) throw createHttpError("Courier is required", 400);
+  if (!tracking) throw createHttpError("Tracking number is required", 400);
+
+  const order = await CustomerOrder.findById(orderId);
+  assertAdminOrderActionable(order);
+  const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
+
+  const currentStatus = normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED");
+  if (!["SHIPPING_RECEIVED", "SHIPPING_IN_PROGRESS"].includes(currentStatus)) {
+    throw createHttpError("Only shipping-received or shipping-in-progress items can be shipped", 409);
+  }
+
+  if (currentStatus === "SHIPPING_RECEIVED") {
+    item.fulfillmentStatus = "SHIPPING_IN_PROGRESS";
+    item.shippingStartedAt = new Date();
+    item.shippingStartedBy = getActorId(actorId);
+    refreshFulfillmentSlaFields(item, order, { now: item.shippingStartedAt, resetLaneAssignedAt: false });
+    applyDerivedOrderState(order);
+  }
+
+  item.courierName = courier;
+  item.courierAssignedAt = new Date();
+  item.courierAssignedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.courierAssignedAt, resetLaneAssignedAt: false });
+
+  item.outboundTrackingNumber = tracking;
+  item.trackingNumberEnteredAt = new Date();
+  item.trackingNumberEnteredBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.trackingNumberEnteredAt, resetLaneAssignedAt: false });
+
+  const operation = getValidatedStockOperation(item, "This shipped item cannot update inventory because stock data is incomplete");
+  await shipReservedStockEntry(operation);
+  await createInventoryLedgerEntry({
+    item,
+    orderId: order._id,
+    movementType: "SHIP",
+    quantity: operation.quantity,
+    reservedChange: -operation.quantity,
+    userId: actorId,
+    referenceType: "SHIPMENT",
+    referenceId: item.outboundTrackingNumber,
+  });
+  await createInventoryMovementAuditLog({
+    item,
+    orderId: order._id,
+    actorId,
+    actorRole,
+    action: "INVENTORY_SHIPPED",
+    quantity: operation.quantity,
+    reservedChange: -operation.quantity,
+    referenceType: "SHIPMENT",
+    referenceId: item.outboundTrackingNumber,
+  });
+
+  item.fulfillmentStatus = "SHIPPED";
+  item.physicalOwner = "COURIER";
+  item.shippedAt = new Date();
+  item.shippedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.shippedAt, resetLaneAssignedAt: false });
+  await updateShipmentRecord(item, order._id, actorId);
+  applyDerivedOrderState(order);
+  await order.save();
+  if (currentStatus === "SHIPPING_RECEIVED") {
+    await createAuditLog({
+      orderId: order._id,
+      itemId,
+      userId: actorId,
+      role: actorRole,
+      action: "START_SHIPPING",
+      oldStatus: "SHIPPING_RECEIVED",
+      newStatus: "SHIPPING_IN_PROGRESS",
+    });
+  }
+  await createAuditLog({
+    orderId: order._id,
+    itemId,
+    userId: actorId,
+    role: actorRole,
+    action: "ASSIGN_COURIER",
+    oldStatus: "SHIPPING_IN_PROGRESS",
+    newStatus: "SHIPPING_IN_PROGRESS",
+    remarks: courier,
+  });
+  await createAuditLog({
+    orderId: order._id,
+    itemId,
+    userId: actorId,
+    role: actorRole,
+    action: "ENTER_TRACKING_NUMBER",
+    oldStatus: "SHIPPING_IN_PROGRESS",
+    newStatus: "SHIPPING_IN_PROGRESS",
+    remarks: tracking,
+  });
+  await createAuditLog({
+    orderId: order._id,
+    itemId,
+    userId: actorId,
+    role: actorRole,
+    action: "MARK_SHIPPED",
+    oldStatus: "SHIPPING_IN_PROGRESS",
+    newStatus: "SHIPPED",
+    remarks: item.outboundTrackingNumber,
+  });
+  return order.toObject();
+}
+
+export async function markOrderItemDelivered({ orderId, itemId, actorId, actorRole = "ORDER_ADMIN", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   const status = normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED");
 
   if (status !== "SHIPPED") {
@@ -1827,6 +2202,7 @@ export async function markOrderItemDelivered({ orderId, itemId, actorId, actorRo
   item.fulfillmentStatus = "DELIVERED";
   item.deliveredAt = new Date();
   item.deliveredBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.deliveredAt, resetLaneAssignedAt: false });
   applyDerivedOrderState(order);
   await order.save();
 
@@ -1849,10 +2225,11 @@ export async function markOrderItemDelivered({ orderId, itemId, actorId, actorRo
   return order.toObject();
 }
 
-export async function routeAdminOrderItemCancellation({ orderItemId, actorId, actorRole = "ORDER_ADMIN", reason = "ADMIN_CANCELLED" }) {
+export async function routeAdminOrderItemCancellation({ orderItemId, actorId, actorRole = "ORDER_ADMIN", reason = "ADMIN_CANCELLED", expectedStatus = "" }) {
   const order = await loadOrderByItemId(orderItemId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, orderItemId);
+  assertExpectedStatus(item, expectedStatus);
   const status = normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED");
 
   if (status === "SHIPPED") {
@@ -1872,11 +2249,12 @@ export async function routeAdminOrderItemCancellation({ orderItemId, actorId, ac
   throw createHttpError("This item cannot be cancelled from its current status", 409);
 }
 
-export async function handoverOrderItemToCancellation({ orderId, itemId, actorId, actorRole = "", remarks = "" }) {
+export async function handoverOrderItemToCancellation({ orderId, itemId, actorId, actorRole = "", remarks = "", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "CANCEL_REQUESTED") {
     throw createHttpError("Only cancellation-requested items can be handed to the cancellation manager", 409);
   }
@@ -1901,6 +2279,7 @@ export async function handoverOrderItemToCancellation({ orderId, itemId, actorId
 
   item.fulfillmentStatus = "HANDED_TO_CANCELLATION";
   item.handedToCancellationAt = new Date();
+  refreshFulfillmentSlaFields(item, order, { now: item.handedToCancellationAt, resetLaneAssignedAt: true });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1916,11 +2295,12 @@ export async function handoverOrderItemToCancellation({ orderId, itemId, actorId
   return order.toObject();
 }
 
-export async function confirmCancellationReceipt({ orderId, itemId, actorId, actorRole = "CANCELLATION_MANAGER" }) {
+export async function confirmCancellationReceipt({ orderId, itemId, actorId, actorRole = "CANCELLATION_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   const handover = await getPendingHandover(itemId, "CURRENT_OWNER_TO_CANCELLATION");
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "HANDED_TO_CANCELLATION") {
     throw createHttpError("Only handed-over cancellation items can confirm receipt", 409);
@@ -1935,6 +2315,7 @@ export async function confirmCancellationReceipt({ orderId, itemId, actorId, act
   item.physicalOwner = "CANCELLATION_MANAGER";
   item.cancellationReceivedAt = new Date();
   item.cancellationReceivedBy = getActorId(actorId);
+  refreshFulfillmentSlaFields(item, order, { now: item.cancellationReceivedAt, resetLaneAssignedAt: false });
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -1957,11 +2338,12 @@ async function closeCancellationCase(caseDoc, actorId, resolution) {
   await caseDoc.save();
 }
 
-export async function restockCancelledOrderItem({ orderId, itemId, actorId, actorRole = "CANCELLATION_MANAGER" }) {
+export async function restockCancelledOrderItem({ orderId, itemId, actorId, actorRole = "CANCELLATION_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "CANCELLATION_RECEIVED") {
     throw createHttpError("Only cancellation-received items can be restocked", 409);
   }
@@ -1979,6 +2361,18 @@ export async function restockCancelledOrderItem({ orderId, itemId, actorId, acto
     referenceType: "CANCELLATION",
     referenceId: itemId,
   });
+  await createInventoryMovementAuditLog({
+    item,
+    orderId: order._id,
+    actorId,
+    actorRole,
+    action: "INVENTORY_RESTOCKED",
+    quantity: operation.quantity,
+    availableChange: operation.quantity,
+    reservedChange: -operation.quantity,
+    referenceType: "CANCELLATION",
+    referenceId: itemId,
+  });
 
   const caseDoc = await getOpenCancellationCase(itemId);
   await closeCancellationCase(caseDoc, actorId, "RESTOCKED");
@@ -1988,6 +2382,7 @@ export async function restockCancelledOrderItem({ orderId, itemId, actorId, acto
   item.cancellationClosedAt = new Date();
   item.cancellationClosedBy = getActorId(actorId);
   item.cancelledAt = new Date();
+  syncDerivedFulfillmentTrackingFields(item, order, item.cancelledAt);
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -2002,11 +2397,12 @@ export async function restockCancelledOrderItem({ orderId, itemId, actorId, acto
   return order.toObject();
 }
 
-export async function markCancelledOrderItemDamaged({ orderId, itemId, actorId, actorRole = "CANCELLATION_MANAGER" }) {
+export async function markCancelledOrderItemDamaged({ orderId, itemId, actorId, actorRole = "CANCELLATION_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   if (normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED") !== "CANCELLATION_RECEIVED") {
     throw createHttpError("Only cancellation-received items can be marked damaged", 409);
   }
@@ -2024,6 +2420,18 @@ export async function markCancelledOrderItemDamaged({ orderId, itemId, actorId, 
     referenceType: "CANCELLATION",
     referenceId: itemId,
   });
+  await createInventoryMovementAuditLog({
+    item,
+    orderId: order._id,
+    actorId,
+    actorRole,
+    action: "INVENTORY_MARKED_DAMAGED",
+    quantity: operation.quantity,
+    reservedChange: -operation.quantity,
+    damagedChange: operation.quantity,
+    referenceType: "CANCELLATION",
+    referenceId: itemId,
+  });
 
   const caseDoc = await getOpenCancellationCase(itemId);
   await closeCancellationCase(caseDoc, actorId, "DAMAGED");
@@ -2033,6 +2441,7 @@ export async function markCancelledOrderItemDamaged({ orderId, itemId, actorId, 
   item.cancellationClosedAt = new Date();
   item.cancellationClosedBy = getActorId(actorId);
   item.cancelledAt = new Date();
+  syncDerivedFulfillmentTrackingFields(item, order, item.cancelledAt);
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({
@@ -2047,11 +2456,12 @@ export async function markCancelledOrderItemDamaged({ orderId, itemId, actorId, 
   return order.toObject();
 }
 
-export async function markCancelledOrderItemLost({ orderId, itemId, actorId, actorRole = "CANCELLATION_MANAGER" }) {
+export async function markCancelledOrderItemLost({ orderId, itemId, actorId, actorRole = "CANCELLATION_MANAGER", expectedStatus = "" }) {
   if (!mongoose.isValidObjectId(orderId)) throw createHttpError("Order not found", 404);
   const order = await CustomerOrder.findById(orderId);
   assertAdminOrderActionable(order);
   const item = getOrderItemOrThrow(order, itemId);
+  assertExpectedStatus(item, expectedStatus);
   const status = normalizeItemFulfillmentStatus(item.fulfillmentStatus, "RESERVED");
   if (!["HANDED_TO_CANCELLATION", "CANCELLATION_RECEIVED"].includes(status)) {
     throw createHttpError("Only cancellation handover items can be marked lost", 409);
@@ -2067,6 +2477,18 @@ export async function markCancelledOrderItemLost({ orderId, itemId, actorId, act
     reservedChange: -operation.quantity,
     lostChange: operation.quantity,
     userId: actorId,
+    referenceType: "CANCELLATION",
+    referenceId: itemId,
+  });
+  await createInventoryMovementAuditLog({
+    item,
+    orderId: order._id,
+    actorId,
+    actorRole,
+    action: "INVENTORY_MARKED_LOST",
+    quantity: operation.quantity,
+    reservedChange: -operation.quantity,
+    lostChange: operation.quantity,
     referenceType: "CANCELLATION",
     referenceId: itemId,
   });
@@ -2091,6 +2513,7 @@ export async function markCancelledOrderItemLost({ orderId, itemId, actorId, act
   item.cancellationClosedAt = new Date();
   item.cancellationClosedBy = getActorId(actorId);
   item.cancelledAt = new Date();
+  syncDerivedFulfillmentTrackingFields(item, order, item.cancelledAt);
   applyDerivedOrderState(order);
   await order.save();
   await createAuditLog({

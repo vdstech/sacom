@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import Cart from "./cart.model.js";
 import Product from "../product/product.model.js";
 import Variant from "../variant/variant.model.js";
+import Inventory from "../inventory/inventory.model.js";
+import { resolveCanonicalAvailableQuantity } from "../inventory/inventory.projection.js";
 
 const GUEST_CART_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -37,6 +39,69 @@ function calculateDiscountedPrice(price, discount) {
   return base;
 }
 
+function roundMoney(value) {
+  return Math.round((asNumber(value, 0) + Number.EPSILON) * 100) / 100;
+}
+
+function resolveDefaultTaxRate() {
+  const numeric = Number(process.env.DEFAULT_PRODUCT_TAX_RATE);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric >= 1) return 0.05;
+  return numeric;
+}
+
+function resolveTaxRate(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric >= 1) return resolveDefaultTaxRate();
+  return numeric;
+}
+
+function extractInclusiveTax(lineTotal, taxRate) {
+  const total = Math.max(0, asNumber(lineTotal, 0));
+  const normalizedTaxRate = resolveTaxRate(taxRate);
+  if (total <= 0 || normalizedTaxRate <= 0) {
+    return { taxableBaseTotal: total, includedTaxTotal: 0 };
+  }
+  const taxableBaseTotal = roundMoney(total / (1 + normalizedTaxRate));
+  const includedTaxTotal = roundMoney(total - taxableBaseTotal);
+  return { taxableBaseTotal, includedTaxTotal };
+}
+
+export function summarizeCartItems(lines = []) {
+  const items = (Array.isArray(lines) ? lines : []).map((line) => {
+    const quantity = Math.max(0, Math.floor(asNumber(line.quantity, 0)));
+    const unitPrice = Math.max(0, asNumber(line.unitPrice, 0));
+    const effectivePrice = Math.max(0, asNumber(line.effectivePrice, unitPrice));
+    const lineSubtotal = roundMoney(unitPrice * quantity);
+    const lineTotal = roundMoney(effectivePrice * quantity);
+    const lineDiscountTotal = roundMoney(Math.max(0, lineSubtotal - lineTotal));
+    const taxRate = resolveTaxRate(line.taxRate);
+    const { taxableBaseTotal, includedTaxTotal } = extractInclusiveTax(lineTotal, taxRate);
+
+    return {
+      ...line,
+      unitPrice,
+      effectivePrice,
+      taxRate,
+      priceIncludesTax: true,
+      quantity,
+      lineDiscountTotal,
+      taxableBaseTotal,
+      includedTaxTotal,
+      lineTotal,
+    };
+  });
+
+  return {
+    itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
+    subtotal: roundMoney(items.reduce((sum, item) => sum + item.lineTotal, 0)),
+    discountTotal: roundMoney(items.reduce((sum, item) => sum + item.lineDiscountTotal, 0)),
+    taxableBaseTotal: roundMoney(items.reduce((sum, item) => sum + item.taxableBaseTotal, 0)),
+    includedTaxTotal: roundMoney(items.reduce((sum, item) => sum + item.includedTaxTotal, 0)),
+    priceIncludesTax: true,
+    items,
+  };
+}
+
 function normalizeCartToken(value) {
   return normalizeString(value).replace(/[^a-zA-Z0-9_-]+/g, "");
 }
@@ -46,12 +111,20 @@ function getRequestedCartToken(req) {
 }
 
 async function loadLiveSelection({ productId, variantId, stockKey }) {
-  const [product, variant] = await Promise.all([
+  const normalizedStockKey = normalizeString(stockKey).toUpperCase();
+  const [product, variant, inventoryRow] = await Promise.all([
     Product.findById(productId)
       .select("_id slug title isActive")
       .lean(),
     Variant.findOne({ _id: variantId, productId })
-      .select("_id productId price discount images colors stock isActive")
+      .select("_id productId price discount taxRate images colors stock isActive")
+      .lean(),
+    Inventory.findOne({
+      productId,
+      variantId,
+      stockKey: normalizedStockKey,
+    })
+      .select("stockKey sizeLabel quantity availableQty reservedQty damagedQty lostQty reorderLevel")
       .lean(),
   ]);
 
@@ -66,10 +139,10 @@ async function loadLiveSelection({ productId, variantId, stockKey }) {
     throw err;
   }
 
-  const normalizedStockKey = normalizeString(stockKey).toUpperCase();
-  const stockRow = (Array.isArray(variant.stock) ? variant.stock : []).find(
+  const variantStockRow = (Array.isArray(variant.stock) ? variant.stock : []).find(
     (row) => normalizeString(row?.stockKey).toUpperCase() === normalizedStockKey
   );
+  const stockRow = inventoryRow || variantStockRow;
 
   if (!stockRow) {
     const err = new Error("Selected size is not available");
@@ -81,6 +154,7 @@ async function loadLiveSelection({ productId, variantId, stockKey }) {
 }
 
 function buildCartLineSnapshot({ product, variant, stockRow, quantity }) {
+  const availableQty = resolveCanonicalAvailableQuantity(stockRow);
   return {
     productId: product._id,
     productSlug: normalizeString(product.slug),
@@ -92,8 +166,10 @@ function buildCartLineSnapshot({ product, variant, stockRow, quantity }) {
     imageUrl: normalizeString(variant?.images?.[0]?.url),
     unitPrice: Math.max(0, asNumber(variant.price, 0)),
     effectivePrice: calculateDiscountedPrice(variant.price, variant.discount),
+    taxRate: resolveTaxRate(variant.taxRate),
+    priceIncludesTax: true,
     quantity: Math.max(0, Math.floor(asNumber(quantity, 1))),
-    available: Number(stockRow?.quantity || 0) > 0,
+    available: availableQty > 0,
   };
 }
 
@@ -139,7 +215,7 @@ async function hydrateCart(cart) {
         variantId: line.variantId,
         stockKey: line.stockKey,
       });
-      const availableQty = Math.max(0, asNumber(stockRow.quantity, 0));
+      const availableQty = resolveCanonicalAvailableQuantity(stockRow);
       const nextQuantity = Math.min(Math.max(0, Math.floor(asNumber(line.quantity, 0))), availableQty);
       const snapshot = buildCartLineSnapshot({
         product,
@@ -188,16 +264,22 @@ async function hydrateCart(cart) {
     imageUrl: normalizeString(line.imageUrl),
     unitPrice: Math.max(0, asNumber(line.unitPrice, 0)),
     effectivePrice: Math.max(0, asNumber(line.effectivePrice, 0)),
+    taxRate: resolveTaxRate(line.taxRate),
+    priceIncludesTax: true,
     quantity: Math.max(0, Math.floor(asNumber(line.quantity, 0))),
     available: !!line.available,
-    lineTotal: Math.max(0, asNumber(line.effectivePrice, 0)) * Math.max(0, Math.floor(asNumber(line.quantity, 0))),
   }));
+  const summary = summarizeCartItems(items);
 
   return {
     cartToken: cart.cartToken,
-    itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
-    subtotal: items.reduce((sum, item) => sum + item.lineTotal, 0),
-    items,
+    itemCount: summary.itemCount,
+    subtotal: summary.subtotal,
+    discountTotal: summary.discountTotal,
+    taxableBaseTotal: summary.taxableBaseTotal,
+    includedTaxTotal: summary.includedTaxTotal,
+    priceIncludesTax: true,
+    items: summary.items,
     expiresAt: cart.expiresAt,
     warnings,
   };
@@ -230,7 +312,7 @@ export async function addCartItem(req, res) {
 
     const cart = await ensureCart(getRequestedCartToken(req));
     const { product, variant, stockRow } = await loadLiveSelection({ productId, variantId, stockKey });
-    const availableQty = Math.max(0, asNumber(stockRow.quantity, 0));
+    const availableQty = resolveCanonicalAvailableQuantity(stockRow);
 
     if (availableQty < 1) {
       return res.status(409).json({ error: "Selected size is out of stock" });
@@ -297,7 +379,7 @@ export async function updateCartItem(req, res) {
       variantId: line.variantId,
       stockKey: line.stockKey,
     });
-    const availableQty = Math.max(0, asNumber(stockRow.quantity, 0));
+    const availableQty = resolveCanonicalAvailableQuantity(stockRow);
     if (availableQty < 1) {
       return res.status(409).json({ error: "Selected size is out of stock" });
     }

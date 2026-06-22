@@ -24,6 +24,7 @@ test("mapAdminProductDetail returns canonical product fields", () => {
     care: { text: "Dry clean only" },
     returnPolicy: { text: "Returns and exchanges accepted within 7 days", returnable: true, windowDays: 7 },
     details: { sleeve_type: "long", padded: true, size_cm: 36 },
+    ratingSummary: { averageRating: 4.5, reviewCount: 8, verifiedBuyerReviewCount: 5, distribution: { 5: 4 } },
     __v: 9,
     createdBy: "u1",
     updatedBy: "u2",
@@ -42,6 +43,8 @@ test("mapAdminProductDetail returns canonical product fields", () => {
   assert.equal(mapped.details?.sleeve_type, "long");
   assert.equal(mapped.details?.padded, true);
   assert.equal(mapped.details?.size_cm, 36);
+  assert.equal(mapped.ratingSummary?.averageRating, 4.5);
+  assert.equal(mapped.ratingSummary?.reviewCount, 8);
   assert.ok(!Object.hasOwn(mapped, "__v"));
   assert.ok(!Object.hasOwn(mapped, "createdBy"));
   assert.ok(!Object.hasOwn(mapped, "updatedBy"));
@@ -67,6 +70,8 @@ test("mapAdminVariantListItem returns minimal variant fields", () => {
 
   assert.equal(mapped._id, "v1");
   assert.equal(mapped.productId, "p1");
+  assert.equal(mapped.taxRate, 0.05);
+  assert.equal(mapped.priceIncludesTax, true);
   assert.equal(mapped.colors.length, 2);
   assert.equal(mapped.colors[0].name, "gold");
   assert.equal(mapped.sizeLabel, "");
@@ -93,6 +98,7 @@ test("mapStorefrontProductDetail returns storefront-safe product and variant dat
       care: { text: "Dry clean only" },
       returnPolicy: { text: "Returns and exchanges accepted within 7 days", returnable: true, windowDays: 7 },
       details: { sleeve_type: "long" },
+      ratingSummary: { averageRating: 4.2, reviewCount: 3, distribution: { 4: 2, 5: 1 } },
     },
     {
       variants: [
@@ -127,7 +133,11 @@ test("mapStorefrontProductDetail returns storefront-safe product and variant dat
   assert.equal(mapped.returnPolicy?.text, "Returns and exchanges accepted within 7 days");
   assert.equal(mapped.returnPolicy?.returnable, true);
   assert.equal(mapped.returnPolicy?.windowDays, 7);
+  assert.equal(mapped.ratingSummary?.averageRating, 4.2);
+  assert.equal(mapped.ratingSummary?.reviewCount, 3);
   assert.equal(mapped.variants.length, 1);
+  assert.equal(mapped.variants[0].taxRate, 0.05);
+  assert.equal(mapped.variants[0].priceIncludesTax, true);
   assert.equal(mapped.variants[0].colors[0]?.name, "gold");
   assert.equal(mapped.variants[0].details.weave, "jacquard");
   assert.equal(mapped.variants[0].stock.length, 1);
@@ -145,6 +155,7 @@ test("mapStorefrontListItem keeps the product category slug on mixed storefront 
       categoryId: "c2",
       shortDescription: "short",
       currency: "INR",
+      ratingSummary: { averageRating: 4.7, reviewCount: 12, distribution: { 5: 10 } },
     },
     {
       categorySlug: "blouse",
@@ -155,6 +166,10 @@ test("mapStorefrontListItem keeps the product category slug on mixed storefront 
 
   assert.equal(mapped.categoryId, "c2");
   assert.equal(mapped.categorySlug, "blouse");
+  assert.equal(mapped.defaultVariant?.taxRate, 0.05);
+  assert.equal(mapped.defaultVariant?.priceIncludesTax, true);
+  assert.equal(mapped.ratingSummary?.averageRating, 4.7);
+  assert.equal(mapped.ratingSummary?.reviewCount, 12);
 });
 
 test("product DTOs collapse legacy shipping, care, and return fields into text", () => {

@@ -8,6 +8,8 @@ function normalizeString(value, fallback = "") {
 }
 
 export function resolveOrderDisplayId(order) {
+  const displayId = normalizeString(order?.displayId);
+  if (displayId) return displayId;
   const paymentReference = normalizeString(order?.paymentReference);
   if (paymentReference) return paymentReference;
   const rawId = normalizeString(order?._id || order?.id);
@@ -60,9 +62,7 @@ export const ORDER_PAYMENT_STATUSES = [
   "pending",
   "paid",
   "payment_failed",
-  "refund_pending",
-  "partially_refunded",
-  "refunded",
+  "manual_external_resolution",
 ];
 
 export const PHYSICAL_OWNER_VALUES = [
@@ -90,6 +90,13 @@ export const POST_PICK_PRE_SHIPMENT_STATUSES = [
   "SHIPPING_RECEIVED",
   "SHIPPING_IN_PROGRESS",
 ];
+export const ORDER_ITEM_SLA_STATUSES = ["ON_TRACK", "DELAYED", "VIOLATED"];
+export const FULFILLMENT_DELAY_HOURS = 24;
+export const FULFILLMENT_VIOLATION_HOURS = 48;
+export const DEFAULT_TARGET_COMPLETION_HOURS = Math.max(
+  1,
+  Number.parseInt(process.env.ORDER_TARGET_COMPLETION_HOURS || "72", 10) || 72
+);
 
 const LEGACY_STATUS_MAP = {
   pending: "RESERVED",
@@ -126,14 +133,6 @@ const LEGACY_STATUS_MAP = {
   refund_completed: "REFUND_COMPLETED",
 };
 
-const REFUND_PENDING_ITEM_STATUSES = [
-  "RETURN_REQUESTED",
-  "COLLECTION_SCHEDULED",
-  "RETURN_IN_TRANSIT",
-  "RETURN_RECEIVED",
-  "INVENTORY_ACCEPTANCE_PENDING_RETURN",
-];
-
 function normalizeStatusInput(value, fallback = "RESERVED") {
   const raw = normalizeString(value, fallback);
   if (!raw) return fallback;
@@ -164,6 +163,163 @@ export function normalizePhysicalOwner(value, fallback = "NONE") {
   const normalized = normalizeString(value, fallback).toUpperCase();
   if (PHYSICAL_OWNER_VALUES.includes(normalized)) return normalized;
   return fallback;
+}
+
+export function normalizeSlaStatus(value, fallback = "ON_TRACK") {
+  const normalized = normalizeString(value, fallback).toUpperCase();
+  if (ORDER_ITEM_SLA_STATUSES.includes(normalized)) return normalized;
+  return fallback;
+}
+
+function addHours(date, hours) {
+  const base = date instanceof Date ? date : new Date(date || "");
+  if (Number.isNaN(base.getTime())) return null;
+  return new Date(base.getTime() + (hours * 60 * 60 * 1000));
+}
+
+function getHoursSince(value, now = new Date()) {
+  const date = value instanceof Date ? value : new Date(value || "");
+  if (Number.isNaN(date.getTime())) return 0;
+  return Math.max(0, (now.getTime() - date.getTime()) / (60 * 60 * 1000));
+}
+
+export function resolveFulfillmentStage(item) {
+  const status = normalizeItemFulfillmentStatus(item?.fulfillmentStatus, "RESERVED");
+  const owner = normalizePhysicalOwner(item?.physicalOwner, "NONE");
+  const pendingType = normalizeString(item?.pendingHandover?.type).toUpperCase();
+  const pendingStatus = normalizeString(item?.pendingHandover?.status).toUpperCase();
+
+  if (["RESERVED", "PICKED_FROM_WAREHOUSE"].includes(status)) return "Processing";
+  if (["HANDED_TO_PACKAGING", "PACKAGING_RECEIVED", "PACKAGING_IN_PROGRESS", "PACKED"].includes(status)) return "Packaging";
+  if (["HANDED_TO_SHIPPING", "SHIPPING_RECEIVED", "SHIPPING_IN_PROGRESS"].includes(status)) return "Shipping";
+  if (status === "SHIPPED" || status === "DELIVERED") return "Shipped";
+  if (["HANDED_TO_CANCELLATION", "CANCELLATION_RECEIVED", ...FINAL_CANCELLATION_STATUSES].includes(status)) return "Cancellation";
+  if (isReturnLaneStatus(status)) return "Return";
+  if (status === "CANCEL_REQUESTED") {
+    if (owner === "PROCESSING_MANAGER") return "Processing";
+    if (owner === "PACKAGING_MANAGER") return "Packaging";
+    if (owner === "SHIPPING_OPERATOR") return "Shipping";
+    if (pendingType === "PACKAGING_TO_SHIPPING" && pendingStatus === "PENDING_RECEIPT") return "Shipping";
+    return "Cancellation";
+  }
+  return "Other";
+}
+
+export function resolveFulfillmentLaneKey(item) {
+  const stage = resolveFulfillmentStage(item);
+  if (stage === "Processing") return "processing";
+  if (stage === "Packaging") return "packaging";
+  if (stage === "Shipping") return "shipping";
+  if (stage === "Shipped") return "shipped";
+  if (stage === "Cancellation") return "cancellation";
+  if (stage === "Return") return "return";
+  return "";
+}
+
+export function isTrackedFulfillmentLane(stageOrItem) {
+  const stage = typeof stageOrItem === "string" ? stageOrItem : resolveFulfillmentStage(stageOrItem);
+  return ["Processing", "Packaging", "Shipping"].includes(stage);
+}
+
+export function deriveTargetCompletionDate(item, orderPlacedAt) {
+  const explicit = item?.targetCompletionDate ? new Date(item.targetCompletionDate) : null;
+  if (explicit && !Number.isNaN(explicit.getTime())) return explicit;
+  const placedAt = orderPlacedAt instanceof Date ? orderPlacedAt : new Date(orderPlacedAt || "");
+  if (Number.isNaN(placedAt.getTime())) return null;
+  return addHours(placedAt, DEFAULT_TARGET_COMPLETION_HOURS);
+}
+
+export function deriveLaneAssignedAt(item, orderPlacedAt) {
+  const explicit = item?.laneAssignedAt ? new Date(item.laneAssignedAt) : null;
+  if (explicit && !Number.isNaN(explicit.getTime())) return explicit;
+
+  const stage = resolveFulfillmentStage(item);
+  const candidateValues = stage === "Processing"
+    ? [item?.pickedAt, orderPlacedAt]
+    : stage === "Packaging"
+      ? [item?.handedToPackagingAt, item?.packagingReceivedAt, orderPlacedAt]
+      : stage === "Shipping"
+        ? [item?.handedToShippingAt, item?.shippingReceivedAt, orderPlacedAt]
+        : stage === "Shipped"
+          ? [item?.shippedAt, item?.handedToShippingAt, orderPlacedAt]
+          : stage === "Cancellation"
+            ? [item?.handedToCancellationAt, item?.cancelRequestedAt, orderPlacedAt]
+            : stage === "Return"
+              ? [item?.returnRequestedAt, orderPlacedAt]
+              : [orderPlacedAt];
+
+  for (const value of candidateValues) {
+    const date = value instanceof Date ? value : new Date(value || "");
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+  return null;
+}
+
+export function deriveLastActionedAt(item, orderPlacedAt) {
+  const explicit = item?.lastActionedAt ? new Date(item.lastActionedAt) : null;
+  if (explicit && !Number.isNaN(explicit.getTime())) return explicit;
+
+  const candidateValues = [
+    item?.deliveredAt,
+    item?.shippedAt,
+    item?.trackingNumberEnteredAt,
+    item?.courierAssignedAt,
+    item?.shippingStartedAt,
+    item?.shippingReceivedAt,
+    item?.handedToShippingAt,
+    item?.packedAt,
+    item?.labelPrintedAt,
+    item?.packageVerifiedAt,
+    item?.packagingStartedAt,
+    item?.packagingReceivedAt,
+    item?.handedToPackagingAt,
+    item?.pickedAt,
+    item?.cancelRequestedAt,
+    item?.cancellationReceivedAt,
+    item?.cancellationClosedAt,
+    item?.returnRequestedAt,
+    item?.returnReceivedAt,
+    item?.refundCompletedAt,
+    orderPlacedAt,
+  ];
+
+  for (const value of candidateValues) {
+    const date = value instanceof Date ? value : new Date(value || "");
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+  return null;
+}
+
+export function resolveItemSlaStatus(item, {
+  orderPlacedAt = null,
+  now = new Date(),
+  activeEscalation = null,
+} = {}) {
+  if (normalizeString(activeEscalation?.status).toUpperCase() === "OPEN") return "VIOLATED";
+
+  const stage = resolveFulfillmentStage(item);
+  if (!isTrackedFulfillmentLane(stage)) return "ON_TRACK";
+
+  const laneAssignedAt = deriveLaneAssignedAt(item, orderPlacedAt);
+  const lastActionedAt = deriveLastActionedAt(item, orderPlacedAt);
+  const laneHours = laneAssignedAt ? getHoursSince(laneAssignedAt, now) : 0;
+  const actionHours = lastActionedAt ? getHoursSince(lastActionedAt, now) : 0;
+
+  if (laneHours >= FULFILLMENT_VIOLATION_HOURS) return "VIOLATED";
+  if (actionHours >= FULFILLMENT_DELAY_HOURS) return "DELAYED";
+  return normalizeSlaStatus(item?.slaStatus, "ON_TRACK");
+}
+
+export function getItemHoursInLane(item, { orderPlacedAt = null, now = new Date() } = {}) {
+  const stage = resolveFulfillmentStage(item);
+  if (!isTrackedFulfillmentLane(stage)) return 0;
+  const laneAssignedAt = deriveLaneAssignedAt(item, orderPlacedAt);
+  return laneAssignedAt ? Number(getHoursSince(laneAssignedAt, now).toFixed(2)) : 0;
+}
+
+export function getItemSlaSortPriority(item, { orderPlacedAt = null, now = new Date(), activeEscalation = null } = {}) {
+  const status = resolveItemSlaStatus(item, { orderPlacedAt, now, activeEscalation });
+  return status === "ON_TRACK" ? 1 : 0;
 }
 
 function itemStatusFromInput(input, fallback = "RESERVED") {
@@ -290,6 +446,10 @@ export function resolveOrderFulfillmentStatus(order) {
   if (shippedItems.length > 0) return "PARTIALLY_SHIPPED";
 
   if (activeItems.length && activeItems.every((status) => status === "PACKED")) return "PACKED";
+  // PARTIALLY_PACKED is an order-level rollup only. It means active items in the
+  // same order have progressed into packaging or beyond, but not every active
+  // item has reached PACKED yet. Individual order items should never use this
+  // as their own fulfillment status.
   if (activeItems.some((status) => ["PACKAGING_RECEIVED", "PACKAGING_IN_PROGRESS", "PACKED", "HANDED_TO_SHIPPING", "SHIPPING_RECEIVED", "SHIPPING_IN_PROGRESS"].includes(status))) {
     return activeItems.length > 1 ? "PARTIALLY_PACKED" : activeItems[0] === "PACKED" ? "PACKED" : "PARTIALLY_PACKED";
   }
@@ -302,16 +462,6 @@ export function resolveOrderFulfillmentStatus(order) {
 
 export function resolveOrderPaymentStatus(order) {
   const fallback = normalizePaymentStatus(order?.paymentStatus, "paid");
-  if (fallback === "payment_failed") return "payment_failed";
-  const items = getNormalizedItems(order);
-  if (!items.length) return fallback;
-
-  const refundedCount = items.filter((status) => [...FINAL_CANCELLATION_STATUSES, "REFUND_COMPLETED"].includes(status)).length;
-  const hasPendingRefund = items.some((status) => REFUND_PENDING_ITEM_STATUSES.includes(status));
-
-  if (hasPendingRefund) return "refund_pending";
-  if (refundedCount === items.length && refundedCount > 0) return "refunded";
-  if (refundedCount > 0) return "partially_refunded";
   return fallback;
 }
 
@@ -327,15 +477,29 @@ function mapHandoverSnapshot(item) {
   } : null;
 }
 
-export function mapOrder(order) {
+function mapEscalationSnapshot(item) {
+  return item?.activeEscalation ? {
+    id: String(item.activeEscalation._id || item.activeEscalation.id || ""),
+    lane: normalizeString(item.activeEscalation.lane),
+    responsibleOwner: normalizeString(item.activeEscalation.responsibleOwner),
+    triggeredAt: item.activeEscalation.triggeredAt || null,
+    hoursPending: asNumber(item.activeEscalation.hoursPending, 0),
+    reason: normalizeString(item.activeEscalation.reason),
+    status: normalizeString(item.activeEscalation.status),
+    resolvedAt: item.activeEscalation.resolvedAt || null,
+  } : null;
+}
+
+export function mapOrder(order, { now = new Date() } = {}) {
   const grandTotal = asNumber(order?.grandTotal, asNumber(order?.total, 0));
   const fulfillmentStatus = resolveOrderFulfillmentStatus(order);
   const paymentStatus = resolveOrderPaymentStatus(order);
+  const placedAt = order?.placedAt || null;
 
   return {
     id: String(order?._id || ""),
     displayId: resolveOrderDisplayId(order),
-    placedAt: order?.placedAt,
+    placedAt,
     status: normalizeString(order?.status, fulfillmentStatus),
     paymentStatus,
     fulfillmentStatus,
@@ -348,10 +512,12 @@ export function mapOrder(order) {
     total: grandTotal,
     currency: normalizeString(order?.currency, "INR"),
     pricingVersion: asNumber(order?.pricingVersion, 1),
+    pricingSnapshot: order?.pricingSnapshot || null,
     couponCode: normalizeString(order?.couponCode),
     couponDiscountTotal: asNumber(order?.couponDiscountTotal, 0),
     couponAppliedAmount: asNumber(order?.couponAppliedAmount, 0),
     couponForfeitedAmount: asNumber(order?.couponForfeitedAmount, 0),
+    displayReference: resolveOrderDisplayId(order),
     paymentReference: normalizeString(order?.paymentReference),
     addressSnapshot: order?.addressSnapshot || null,
     items: (Array.isArray(order?.items) ? order.items : []).map((item, index) => ({
@@ -367,6 +533,8 @@ export function mapOrder(order) {
       quantity: Math.max(1, asNumber(item?.quantity, 1)),
       fulfillmentStatus: normalizeItemFulfillmentStatus(item?.fulfillmentStatus, "RESERVED"),
       physicalOwner: normalizePhysicalOwner(item?.physicalOwner, "NONE"),
+      currentLaneOwner: normalizePhysicalOwner(item?.physicalOwner, "NONE"),
+      currentStage: resolveFulfillmentStage(item),
       cancellationSource: normalizeString(item?.cancellationSource),
       cancellationReason: normalizeString(item?.cancellationReason),
       packageVerificationStatus: normalizeString(item?.packageVerificationStatus, "PENDING"),
@@ -375,6 +543,12 @@ export function mapOrder(order) {
       labelReprintReason: normalizeString(item?.labelReprintReason),
       courierName: normalizeString(item?.courierName),
       outboundTrackingNumber: normalizeString(item?.outboundTrackingNumber),
+      customerOrderedDate: placedAt,
+      targetCompletionDate: deriveTargetCompletionDate(item, placedAt)?.toISOString() || null,
+      laneAssignedAt: deriveLaneAssignedAt(item, placedAt)?.toISOString() || null,
+      lastActionedAt: deriveLastActionedAt(item, placedAt)?.toISOString() || null,
+      slaStatus: resolveItemSlaStatus(item, { orderPlacedAt: placedAt, now, activeEscalation: item?.activeEscalation }),
+      hoursInLane: getItemHoursInLane(item, { orderPlacedAt: placedAt, now }),
       cancelRequestedAt: item?.cancelRequestedAt || null,
       pickedAt: item?.pickedAt || null,
       pickedBy: item?.pickedBy ? String(item.pickedBy) : "",
@@ -394,6 +568,7 @@ export function mapOrder(order) {
       cancellationReceivedAt: item?.cancellationReceivedAt || null,
       cancellationClosedAt: item?.cancellationClosedAt || null,
       pendingHandover: mapHandoverSnapshot(item),
+      activeEscalation: mapEscalationSnapshot(item),
       lineSubtotal: asNumber(item?.lineSubtotal, 0),
       lineTaxTotal: asNumber(item?.lineTaxTotal, 0),
       lineShippingTotal: asNumber(item?.lineShippingTotal, 0),

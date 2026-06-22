@@ -74,7 +74,7 @@ function canCancelItem(item: CustomerOrderItem, order: CustomerOrder) {
 }
 
 function canOpenReturnExchange(item: CustomerOrderItem) {
-  return !!item.canRequestReturn && !!item.canRequestExchange && !item.returnExchangeCase;
+  return !!(item.canRequestReturn || item.canRequestExchange) && !item.returnExchangeCase;
 }
 
 function formatDate(value?: string | null) {
@@ -118,6 +118,10 @@ function getReturnExchangeBlockMessage(item: CustomerOrderItem) {
     default:
       return "";
   }
+}
+
+function isIssueRequestKind(kind: RequestKind) {
+  return kind === "RETURN";
 }
 
 const EMPTY_FORM: RequestFormState = {
@@ -260,7 +264,7 @@ export default function OrdersPage() {
       updateOrder(payload.order);
       closeRequestForm(item.id);
       setStatusMessage(
-        kind === "RETURN"
+        isIssueRequestKind(kind)
           ? STOREFRONT_STRINGS.account.orders.returnSuccess
           : STOREFRONT_STRINGS.account.orders.exchangeSuccess
       );
@@ -270,8 +274,8 @@ export default function OrdersPage() {
         err instanceof Error
           ? err.message
           : (kind === "RETURN"
-            ? STOREFRONT_STRINGS.account.orders.returnFailed
-            : STOREFRONT_STRINGS.account.orders.exchangeFailed)
+          ? STOREFRONT_STRINGS.account.orders.returnFailed
+          : STOREFRONT_STRINGS.account.orders.exchangeFailed)
       );
       setStatusTone("error");
     } finally {
@@ -298,7 +302,7 @@ export default function OrdersPage() {
                 className={`account-orders__item ${selectedOrder?.id === order.id ? "is-active" : ""}`}
                 onClick={() => void loadOrder(order.id)}
               >
-                <strong>{STOREFRONT_STRINGS.account.orders.orderPrefix}{order.id.slice(-6).toUpperCase()}</strong>
+                <strong>{STOREFRONT_STRINGS.account.orders.orderPrefix}{order.displayReference || order.id.slice(-6).toUpperCase()}</strong>
                 <span>{formatDate(order.placedAt)}</span>
                 <span>{getOrderStatusLabel(order)}</span>
                 <span>{formatMoney(getOrderDisplayTotal(order))}</span>
@@ -311,7 +315,7 @@ export default function OrdersPage() {
               <>
                 <div className="account-orders__detail-header">
                   <div>
-                    <h3>{STOREFRONT_STRINGS.account.orders.orderPrefix}{selectedOrder.id.slice(-6).toUpperCase()}</h3>
+                    <h3>{STOREFRONT_STRINGS.account.orders.orderPrefix}{selectedOrder.displayReference || selectedOrder.id.slice(-6).toUpperCase()}</h3>
                     <p className="section-copy">{STOREFRONT_STRINGS.account.orders.status}: {getOrderStatusLabel(selectedOrder)}</p>
                     <p className="section-copy">{STOREFRONT_STRINGS.account.orders.paymentStatus}: {getPaymentStatusLabel(selectedOrder.paymentStatus)}</p>
                     <p className="section-copy">{STOREFRONT_STRINGS.account.orders.fulfillmentStatus}: {getStateLabel(selectedOrder.fulfillmentStatus)}</p>
@@ -391,7 +395,7 @@ export default function OrdersPage() {
                             <div className="account-orders__request-form">
                               <label className="account-orders__request-field">
                                 <span>
-                                  {activeRequestKind === "RETURN"
+                                  {isIssueRequestKind(activeRequestKind)
                                     ? STOREFRONT_STRINGS.account.orders.returnReasonLabel
                                     : STOREFRONT_STRINGS.account.orders.exchangeReasonLabel}
                                 </span>
@@ -425,10 +429,10 @@ export default function OrdersPage() {
                                   onClick={() => void handleReturnExchangeRequest(selectedOrder.id, item, activeRequestKind)}
                                 >
                                   {actionBusyKey === `${item.id}:${activeRequestKind}`
-                                    ? (activeRequestKind === "RETURN"
+                                    ? (isIssueRequestKind(activeRequestKind)
                                       ? STOREFRONT_STRINGS.account.orders.returnBusy
                                       : STOREFRONT_STRINGS.account.orders.exchangeBusy)
-                                    : (activeRequestKind === "RETURN"
+                                    : (isIssueRequestKind(activeRequestKind)
                                       ? STOREFRONT_STRINGS.account.orders.submitReturn
                                       : STOREFRONT_STRINGS.account.orders.submitExchange)}
                                 </button>

@@ -24,6 +24,14 @@ export default function CheckoutPage() {
     }
   }, [ready, customer, router]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("inventoryChanged") !== "1") return;
+    setStatusMessage(STOREFRONT_STRINGS.checkout.stockChangedRecovery);
+    setStatusTone("error");
+  }, []);
+
   const moveToWishlist = async (item: NonNullable<typeof cart>["items"][number]) => {
     if (!item?.itemId || !item?.productId || pendingItemId) return;
 
@@ -49,6 +57,7 @@ export default function CheckoutPage() {
   const authPending = !ready || accountLoading;
   const isRedirectingToAuth = ready && !customer;
   const isEmpty = ready && !!customer && !loading && !(cart?.items || []).length;
+  const hasUnavailableItems = !!(cart?.items || []).some((item) => !item.available);
 
   return (
     <section className="section">
@@ -124,12 +133,26 @@ export default function CheckoutPage() {
                 <strong>{cart?.itemCount || 0}</strong>
               </div>
               <div className="checkout-summary__row">
-                <span>Subtotal</span>
+                <span>{STOREFRONT_STRINGS.checkout.subtotalLabel}</span>
                 <strong>{formatMoney(Number(cart?.subtotal || 0))}</strong>
               </div>
-              <Link href="/checkout/confirmation" className="checkout-button">
-                {STOREFRONT_STRINGS.checkout.continueToConfirmation}
-              </Link>
+              <div className="section-copy">{STOREFRONT_STRINGS.checkout.priceInclusiveLabel}</div>
+              <div className="checkout-summary__row">
+                <span>{STOREFRONT_STRINGS.checkout.gstIncludedLabel}</span>
+                <strong>{formatMoney(Number(cart?.includedTaxTotal || 0))}</strong>
+              </div>
+              {hasUnavailableItems ? (
+                <>
+                  <div className="checkout-line__warning">{STOREFRONT_STRINGS.checkout.stockChangedRecovery}</div>
+                  <button type="button" className="checkout-button" disabled>
+                    {STOREFRONT_STRINGS.checkout.continueToConfirmation}
+                  </button>
+                </>
+              ) : (
+                <Link href="/checkout/confirmation" className="checkout-button">
+                  {STOREFRONT_STRINGS.checkout.continueToConfirmation}
+                </Link>
+              )}
             </aside>
           </div>
         ) : null}

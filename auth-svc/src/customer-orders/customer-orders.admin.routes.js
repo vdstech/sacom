@@ -5,7 +5,15 @@ import * as controller from "./customer-orders.admin.controller.js";
 
 const router = Router();
 
+function requireSystemAdmin(req, res, next) {
+  const systemLevel = String(req.auth?.systemLevel || "NONE").toUpperCase();
+  if (systemLevel === "ADMIN" || systemLevel === "SUPER") return next();
+  return res.status(403).json({ error: "Forbidden" });
+}
+
 router.get("/dashboard", requireAuth, requiresPermission("order:read"), controller.getOrdersDashboard);
+router.get("/dashboard/fulfillment", requireAuth, requiresPermission(["order:read", "order:dashboard:fulfillment:read"]), controller.getOrdersFulfillmentDashboard);
+router.get("/dashboard/escalations", requireAuth, requiresPermission(["order:read", "order:dashboard:escalations:read"]), controller.getOrdersEscalationsDashboard);
 router.get("/metrics", requireAuth, requiresPermission("order:read"), controller.getOrdersMetrics);
 router.get("/", requireAuth, requiresPermission("order:read"), controller.listOrders);
 router.get("/operations/items", requireAuth, requiresPermission("order:read"), controller.listOrderOperationsItems);
@@ -30,8 +38,9 @@ router.post("/:id/items/:itemId/reject-shipping-receipt", requireAuth, requiresP
 router.post("/:id/items/:itemId/start-shipping", requireAuth, requiresPermission(["order:read", "order:shipping"]), controller.shippingStartOrderItem);
 router.post("/:id/items/:itemId/assign-courier", requireAuth, requiresPermission(["order:read", "order:shipping"]), controller.shippingAssignCourierOrderItem);
 router.post("/:id/items/:itemId/tracking", requireAuth, requiresPermission(["order:read", "order:shipping"]), controller.shippingTrackingOrderItem);
+router.post("/:id/items/:itemId/ship", requireAuth, requiresPermission(["order:read", "order:shipping"]), controller.shippingShipOrderItem);
 router.post("/:id/items/:itemId/mark-shipped", requireAuth, requiresPermission(["order:read", "order:shipping"]), controller.shippingMarkShippedOrderItem);
-router.post("/:id/items/:itemId/mark-delivered", requireAuth, requiresPermission(["order:read", "order:shipping"]), controller.adminMarkDeliveredOrderItem);
+router.post("/:id/items/:itemId/mark-delivered", requireAuth, requireSystemAdmin, controller.adminMarkDeliveredOrderItem);
 
 router.get("/cancellations/pending", requireAuth, requiresPermission(["order:read", "order:cancellation"]), controller.listCancellationQueue);
 router.post("/order-items/:itemId/cancel", requireAuth, requiresPermission(["order:read", "order:admin"]), controller.adminCancelOrderItem);

@@ -6,9 +6,10 @@
     "clean": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\"",
     "predev": "npm run clean",
     "prebuild": "npm run clean",
-    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 NODE_OPTIONS='--use-system-ca' NODE_EXTRA_CA_CERTS=../auth-svc/certs/localhost.crt next dev --experimental-https",
+    "dev": "NODE_OPTIONS='--use-system-ca' NODE_EXTRA_CA_CERTS=../auth-svc/certs/localhost.crt next dev --experimental-https",
     "build": "next build",
-    "start": "NODE_TLS_REJECT_UNAUTHORIZED=0 NODE_OPTIONS='--use-system-ca' NODE_EXTRA_CA_CERTS=../auth-svc/certs/localhost.crt next start",
+    "start": "next start",
+    "start:devtls": "NODE_OPTIONS='--use-system-ca' NODE_EXTRA_CA_CERTS=../auth-svc/certs/localhost.crt next start",
     "lint": "next lint",
     "test": "vitest run"
   },

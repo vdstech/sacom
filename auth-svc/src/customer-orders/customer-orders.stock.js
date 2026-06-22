@@ -17,21 +17,20 @@ function createHttpError(message, statusCode = 500) {
   return error;
 }
 
-export function resolveAvailableStockQuantity(entry) {
-  const availableQtyRaw = asNumber(entry?.availableQty, Number.NaN);
-  const quantity = Math.max(0, asNumber(entry?.quantity, 0));
-  const reservedQty = Math.max(0, asNumber(entry?.reservedQty, 0));
-  const damagedQty = Math.max(0, asNumber(entry?.damagedQty, 0));
-  const lostQty = Math.max(0, asNumber(entry?.lostQty, 0));
-  const availableQty = Number.isFinite(availableQtyRaw) ? Math.max(0, availableQtyRaw) : Number.NaN;
-
-  // Legacy inventory rows and product-editor updates may still only persist `quantity`.
-  // When no tracked allocations exist, treat that sellable quantity as the authoritative value.
-  if (quantity > 0 && reservedQty === 0 && damagedQty === 0 && lostQty === 0) {
-    if (!Number.isFinite(availableQty) || availableQty === 0 || quantity > availableQty) {
-      return quantity;
-    }
+function hasPersistedField(entry, fieldName) {
+  if (!entry || typeof entry !== "object" || !fieldName) return false;
+  if (typeof entry.$isDefault === "function" && entry.$isDefault(fieldName)) {
+    return false;
   }
+  return Object.prototype.hasOwnProperty.call(entry, fieldName);
+}
+
+export function resolveAvailableStockQuantity(entry) {
+  const availableQtyRaw = hasPersistedField(entry, "availableQty")
+    ? asNumber(entry?.availableQty, Number.NaN)
+    : Number.NaN;
+  const quantity = Math.max(0, asNumber(entry?.quantity, 0));
+  const availableQty = Number.isFinite(availableQtyRaw) ? Math.max(0, availableQtyRaw) : Number.NaN;
 
   if (Number.isFinite(availableQty)) return availableQty;
   return quantity;
@@ -100,17 +99,18 @@ async function loadInventoryRow(operation) {
 }
 
 async function saveInventoryRow({ inventoryRow, variant, stockEntry }) {
-  stockEntry.quantity = getAvailableQuantity(stockEntry);
-  stockEntry.availableQty = getAvailableQuantity(stockEntry);
-  stockEntry.reservedQty = getReservedQuantity(stockEntry);
-  stockEntry.damagedQty = getDamagedQuantity(stockEntry);
-  stockEntry.lostQty = getLostQuantity(stockEntry);
-
   inventoryRow.quantity = getAvailableQuantity(inventoryRow);
   inventoryRow.availableQty = getAvailableQuantity(inventoryRow);
   inventoryRow.reservedQty = getReservedQuantity(inventoryRow);
   inventoryRow.damagedQty = getDamagedQuantity(inventoryRow);
   inventoryRow.lostQty = getLostQuantity(inventoryRow);
+
+  stockEntry.quantity = inventoryRow.quantity;
+  stockEntry.availableQty = inventoryRow.availableQty;
+  stockEntry.reservedQty = inventoryRow.reservedQty;
+  stockEntry.damagedQty = inventoryRow.damagedQty;
+  stockEntry.lostQty = inventoryRow.lostQty;
+  stockEntry.reorderLevel = Math.max(0, asNumber(inventoryRow.reorderLevel, stockEntry.reorderLevel));
 
   await inventoryRow.save();
   await variant.save();
@@ -127,10 +127,6 @@ export async function reserveStockEntry(operation) {
   inventoryRow.quantity = inventoryRow.availableQty;
   inventoryRow.reservedQty = getReservedQuantity(inventoryRow) + operation.quantity;
 
-  stockEntry.availableQty = getAvailableQuantity(stockEntry) - operation.quantity;
-  stockEntry.quantity = stockEntry.availableQty;
-  stockEntry.reservedQty = getReservedQuantity(stockEntry) + operation.quantity;
-
   await saveInventoryRow({ inventoryRow, variant, stockEntry });
 }
 
@@ -145,10 +141,6 @@ export async function releaseReservedStockEntry(operation) {
   inventoryRow.quantity = inventoryRow.availableQty;
   inventoryRow.reservedQty = reservedQty - operation.quantity;
 
-  stockEntry.availableQty = getAvailableQuantity(stockEntry) + operation.quantity;
-  stockEntry.quantity = stockEntry.availableQty;
-  stockEntry.reservedQty = getReservedQuantity(stockEntry) - operation.quantity;
-
   await saveInventoryRow({ inventoryRow, variant, stockEntry });
 }
 
@@ -160,8 +152,6 @@ export async function shipReservedStockEntry(operation) {
   }
 
   inventoryRow.reservedQty = reservedQty - operation.quantity;
-  stockEntry.reservedQty = getReservedQuantity(stockEntry) - operation.quantity;
-
   await saveInventoryRow({ inventoryRow, variant, stockEntry });
 }
 
@@ -176,10 +166,6 @@ export async function restockCancelledStockEntry(operation) {
   inventoryRow.quantity = inventoryRow.availableQty;
   inventoryRow.reservedQty = reservedQty - operation.quantity;
 
-  stockEntry.availableQty = getAvailableQuantity(stockEntry) + operation.quantity;
-  stockEntry.quantity = stockEntry.availableQty;
-  stockEntry.reservedQty = getReservedQuantity(stockEntry) - operation.quantity;
-
   await saveInventoryRow({ inventoryRow, variant, stockEntry });
 }
 
@@ -193,9 +179,6 @@ export async function markCancelledStockDamaged(operation) {
   inventoryRow.reservedQty = reservedQty - operation.quantity;
   inventoryRow.damagedQty = getDamagedQuantity(inventoryRow) + operation.quantity;
 
-  stockEntry.reservedQty = getReservedQuantity(stockEntry) - operation.quantity;
-  stockEntry.damagedQty = getDamagedQuantity(stockEntry) + operation.quantity;
-
   await saveInventoryRow({ inventoryRow, variant, stockEntry });
 }
 
@@ -208,9 +191,6 @@ export async function markCancelledStockLost(operation) {
 
   inventoryRow.reservedQty = reservedQty - operation.quantity;
   inventoryRow.lostQty = getLostQuantity(inventoryRow) + operation.quantity;
-
-  stockEntry.reservedQty = getReservedQuantity(stockEntry) - operation.quantity;
-  stockEntry.lostQty = getLostQuantity(stockEntry) + operation.quantity;
 
   await saveInventoryRow({ inventoryRow, variant, stockEntry });
 }

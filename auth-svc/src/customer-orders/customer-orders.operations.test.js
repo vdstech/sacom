@@ -42,6 +42,8 @@ test("operations tab rules follow the admin dashboard eligibility", () => {
   );
   assert.equal(orderOperationTabMatchesItem("shipped", { fulfillmentStatus: "SHIPPED" }), true);
   assert.equal(orderOperationTabMatchesItem("shipped", { fulfillmentStatus: "DELIVERED" }), false);
+  assert.equal(orderOperationTabMatchesItem("delivery", { fulfillmentStatus: "SHIPPED" }), true);
+  assert.equal(orderOperationTabMatchesItem("delivery", { fulfillmentStatus: "DELIVERED" }), false);
   assert.equal(orderOperationTabMatchesItem("delivered", { fulfillmentStatus: "DELIVERED" }), true);
 });
 
@@ -95,12 +97,13 @@ test("operations filtering supports summary, search, sort, and pagination", () =
   assert.deepEqual(buildOrderOperationSummary(items), {
     processing: 1,
     shipping: 1,
+    delivery: 1,
     shipped: 1,
     delivered: 0,
   });
 
   const shippedSearch = filterOrderOperationItems(items, {
-    tab: "shipped",
+    tab: "delivery",
     search: "trk-444",
     sort: "newest",
   });
@@ -189,6 +192,8 @@ test("mark delivered updates shipped items and writes a single audit log", async
     assert.equal(String(result.items[0].deliveredBy), "665f45f70f00000000000099");
     assert.equal(auditEntries.length, 1);
     assert.equal(auditEntries[0].action, "MARK_DELIVERED");
+    assert.equal(auditEntries[0].changes.before.status, "SHIPPED");
+    assert.equal(auditEntries[0].changes.after.status, "DELIVERED");
   } finally {
     CustomerOrder.findById = originalFindById;
     AuditLog.create = originalAuditCreate;

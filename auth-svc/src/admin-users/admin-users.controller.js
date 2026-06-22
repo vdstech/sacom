@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Role from "../admin-roles/admin-roles.model.js";
 import User from "./admin-users.model.js";
 import { hashPassword } from "../security/password.js";
+import { recordAuditEvent } from "../audit/audit.service.js";
 
 export const createUser = async (req, res) => {
   const { email, name, roles, password, systemLevel: requestedSystemLevel, isSystemUser: requestedIsSystemUser } =
@@ -79,6 +80,32 @@ export const createUser = async (req, res) => {
     // for future: passwordExpiresAt: new Date(Date.now() + N days)
   });
 
+  await recordAuditEvent({
+    req,
+    action: "USER_CREATED",
+    entityType: "USER",
+    entityId: String(user._id),
+    entityDisplayId: user.email,
+    actor: {
+      actorType: "USER",
+      userId: req.user?._id,
+      email: req.user?.email,
+      name: req.user?.name,
+      role: req.user?.primaryRole || req.auth?.systemLevel || "ADMIN_USER",
+      roleNames: req.user?.roleNames || [],
+    },
+    after: {
+      id: String(user._id),
+      email: user.email,
+      name: user.name,
+      roles: roleDocs.map((role) => ({ id: String(role._id), name: role.name })),
+      systemLevel,
+      isSystemUser,
+      disabled: !!user.disabled,
+      force_reset: !!user.force_reset,
+    },
+  });
+
   return res.status(201).json({
     id: user.id,
     email: user.email,
@@ -101,6 +128,8 @@ export const getUserById = async (req, res) => {
 
 export const updateUser = async (req, res) => {
   const { name, roles, disabled, force_reset } = req.body;
+  const existing = await User.findById(req.params.id).lean();
+  if (!existing) return res.status(404).json({ error: "User not found" });
 
   const patch = {};
   if (name !== undefined) patch.name = String(name).trim();
@@ -119,8 +148,56 @@ export const updateUser = async (req, res) => {
     patch.roles = roleDocs.map((r) => r._id);
   }
 
-  const user = await User.findByIdAndUpdate(req.params.id, patch, { new: true });
+  const user = await User.findByIdAndUpdate(req.params.id, patch, { new: true }).lean();
   if (!user) return res.status(404).json({ error: "User not found" });
+
+  await recordAuditEvent({
+    req,
+    action: "USER_UPDATED",
+    entityType: "USER",
+    entityId: String(user._id),
+    entityDisplayId: user.email,
+    actor: {
+      actorType: "USER",
+      userId: req.user?._id,
+      email: req.user?.email,
+      name: req.user?.name,
+      role: req.user?.primaryRole || req.auth?.systemLevel || "ADMIN_USER",
+      roleNames: req.user?.roleNames || [],
+    },
+    before: {
+      name: existing.name,
+      roles: existing.roles || [],
+      disabled: !!existing.disabled,
+      force_reset: !!existing.force_reset,
+    },
+    after: {
+      name: user.name,
+      roles: user.roles || [],
+      disabled: !!user.disabled,
+      force_reset: !!user.force_reset,
+    },
+  });
+
+  if (existing.disabled !== user.disabled) {
+    await recordAuditEvent({
+      req,
+      action: user.disabled ? "USER_DISABLED" : "USER_ENABLED",
+      entityType: "USER",
+      entityId: String(user._id),
+      entityDisplayId: user.email,
+      actor: {
+        actorType: "USER",
+        userId: req.user?._id,
+        email: req.user?.email,
+        name: req.user?.name,
+        role: req.user?.primaryRole || req.auth?.systemLevel || "ADMIN_USER",
+        roleNames: req.user?.roleNames || [],
+      },
+      before: { disabled: !!existing.disabled },
+      after: { disabled: !!user.disabled },
+    });
+  }
 
   return res.json(user);
 };
@@ -134,6 +211,28 @@ export const deleteUser = async (req, res) => {
   }
 
   const user = await User.findByIdAndDelete(req.params.id);
+
+  await recordAuditEvent({
+    req,
+    action: "USER_DELETED",
+    entityType: "USER",
+    entityId: String(user?._id || userToDelete._id),
+    entityDisplayId: String(user?.email || userToDelete.email || ""),
+    actor: {
+      actorType: "USER",
+      userId: req.user?._id,
+      email: req.user?.email,
+      name: req.user?.name,
+      role: req.user?.primaryRole || req.auth?.systemLevel || "ADMIN_USER",
+      roleNames: req.user?.roleNames || [],
+    },
+    before: {
+      email: userToDelete.email,
+      name: userToDelete.name,
+      roles: userToDelete.roles || [],
+      disabled: !!userToDelete.disabled,
+    },
+  });
 
   return res.json(user);
 };

@@ -11,6 +11,7 @@ type RequestOptions = {
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { token, method = "GET", body, service, onUnauthorized } = options;
   const base = service ? SERVICE_BASES[service] : SERVICE_BASES.auth;
+  const requestUrl = buildRequestUrl(base, path);
 
   const execute = async (authToken?: string | null) => {
     const headers: Record<string, string> = {
@@ -18,7 +19,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     };
     if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
-    const response = await fetch(`${base}${path}`, {
+    const response = await fetch(requestUrl, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -46,6 +47,35 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       if (refreshed) return await execute(refreshed);
     }
     throw error;
+  }
+}
+
+function buildRequestUrl(base: string, path: string) {
+  const normalizedBase = normalizeBaseUrl(base);
+  return normalizedBase ? `${normalizedBase}${path}` : path;
+}
+
+function normalizeBaseUrl(base: string) {
+  const trimmedBase = String(base || "").trim().replace(/\/$/, "");
+  if (!trimmedBase) return "";
+  if (typeof window === "undefined") return trimmedBase;
+
+  try {
+    const currentUrl = new URL(window.location.origin);
+    const configuredUrl = new URL(trimmedBase, window.location.origin);
+
+    // Keep browser requests same-origin when config points back to this app,
+    // even if the configured protocol does not match local HTTPS dev mode.
+    if (
+      configuredUrl.hostname === currentUrl.hostname &&
+      configuredUrl.port === currentUrl.port
+    ) {
+      return "";
+    }
+
+    return configuredUrl.toString().replace(/\/$/, "");
+  } catch {
+    return trimmedBase;
   }
 }
 

@@ -12,6 +12,10 @@ const permissionSchema = mongoose.Schema({
         required: true,
         trim: true
     },
+    isSystemPermission: {
+        type: Boolean,
+        default: false,
+    },
     children: [{
         type: mongoose.Types.ObjectId,
         ref: "Permission"

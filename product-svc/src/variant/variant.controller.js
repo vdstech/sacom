@@ -2,8 +2,10 @@ import mongoose from "mongoose";
 import Product from "../product/product.model.js";
 import Variant from "./variant.model.js";
 import Inventory from "../inventory/inventory.model.js";
+import { normalizeInventoryProjectionEntry, overlayVariantStockWithInventory } from "../inventory/inventory.projection.js";
 import { getCategoryDefinitionConfig, validateVariantDetails } from "../product/categoryConfig.js";
 import { mapAdminVariantListItem } from "../product/response.dto.js";
+import { recordAuditEvent } from "../audit/audit.service.js";
 
 function asNumber(value, fallback = 0) {
   const num = Number(value);
@@ -31,6 +33,21 @@ function normalizeDiscount(input = {}) {
     value: type === "percent" ? Math.min(100, rawValue) : (type === "none" ? 0 : rawValue),
     label: normalizeString(input?.label),
   };
+}
+
+function resolveDefaultTaxRate() {
+  const numeric = Number(process.env.DEFAULT_PRODUCT_TAX_RATE);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric >= 1) return 0.05;
+  return numeric;
+}
+
+function normalizeTaxRateInput(value) {
+  if (value === undefined || value === null || value === "") return resolveDefaultTaxRate();
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric >= 1) {
+    throw new Error("taxRate must be between 0 and 1");
+  }
+  return numeric;
 }
 
 function normalizeColor(input) {
@@ -170,10 +187,21 @@ function deriveVariantSizeLabel(stock = []) {
 }
 
 function normalizeSingleStockEntry(entry, fallback = {}) {
+  const availableQty = Math.max(
+    0,
+    asNumber(
+      entry?.availableQty,
+      entry?.quantity ?? fallback?.availableQty ?? fallback?.quantity ?? 0
+    )
+  );
   return {
     stockKey: normalizeString(entry?.stockKey || fallback?.stockKey).toUpperCase(),
     sizeLabel: normalizeString(entry?.sizeLabel || fallback?.sizeLabel),
-    quantity: Math.max(0, asNumber(entry?.quantity, fallback?.quantity || 0)),
+    quantity: availableQty,
+    availableQty,
+    reservedQty: Math.max(0, asNumber(entry?.reservedQty, fallback?.reservedQty || 0)),
+    damagedQty: Math.max(0, asNumber(entry?.damagedQty, fallback?.damagedQty || 0)),
+    lostQty: Math.max(0, asNumber(entry?.lostQty, fallback?.lostQty || 0)),
     reorderLevel: Math.max(0, asNumber(entry?.reorderLevel, fallback?.reorderLevel || 0)),
   };
 }
@@ -252,24 +280,30 @@ async function syncInventory({
   stock,
   userId,
 }) {
-  const existing = await Inventory.find({ variantId }).select("_id stockKey").lean();
+  const existing = await Inventory.find({ variantId })
+    .select("_id stockKey availableQty reservedQty damagedQty lostQty")
+    .lean();
   const remainingByKey = new Map(
     existing.map((entry) => [normalizeString(entry?.stockKey).toUpperCase(), entry])
   );
 
   for (const entry of stock) {
     const stockKey = normalizeString(entry.stockKey).toUpperCase();
+    const existingDoc = remainingByKey.get(stockKey);
     const payload = {
       stockKey,
       productId,
       variantId,
       sizeLabel: normalizeString(entry.sizeLabel),
-      quantity: Math.max(0, asNumber(entry.quantity, 0)),
+      quantity: Math.max(0, asNumber(entry.availableQty, asNumber(entry.quantity, 0))),
+      availableQty: Math.max(0, asNumber(entry.availableQty, asNumber(entry.quantity, 0))),
+      reservedQty: Math.max(0, asNumber(entry.reservedQty, existingDoc?.reservedQty || 0)),
+      damagedQty: Math.max(0, asNumber(entry.damagedQty, existingDoc?.damagedQty || 0)),
+      lostQty: Math.max(0, asNumber(entry.lostQty, existingDoc?.lostQty || 0)),
       reorderLevel: Math.max(0, asNumber(entry.reorderLevel, 0)),
       updatedBy: userId || null,
     };
 
-    const existingDoc = remainingByKey.get(stockKey);
     if (existingDoc?._id) {
       remainingByKey.delete(stockKey);
       await Inventory.findByIdAndUpdate(existingDoc._id, { $set: payload }, { runValidators: true });
@@ -282,6 +316,47 @@ async function syncInventory({
   if (staleIds.length) {
     await Inventory.deleteMany({ _id: { $in: staleIds } });
   }
+}
+
+function buildInventoryManagedStock(stock = [], inventoryRows = []) {
+  const inventoryByKey = new Map(
+    (Array.isArray(inventoryRows) ? inventoryRows : [])
+      .map((entry) => [normalizeString(entry?.stockKey).toUpperCase(), entry])
+      .filter(([stockKey]) => !!stockKey)
+  );
+
+  return (Array.isArray(stock) ? stock : []).map((entry) => {
+    const stockKey = normalizeString(entry?.stockKey).toUpperCase();
+    const inventoryEntry = inventoryByKey.get(stockKey);
+    if (!inventoryEntry) {
+      return {
+        stockKey,
+        sizeLabel: normalizeString(entry?.sizeLabel),
+        quantity: 0,
+        availableQty: 0,
+        reservedQty: 0,
+        damagedQty: 0,
+        lostQty: 0,
+        reorderLevel: 0,
+      };
+    }
+    return normalizeInventoryProjectionEntry({
+      ...inventoryEntry,
+      stockKey,
+      sizeLabel: normalizeString(entry?.sizeLabel || inventoryEntry?.sizeLabel),
+    });
+  });
+}
+
+function stockEditTouchesManagedQuantities(stock = []) {
+  return (Array.isArray(stock) ? stock : []).some((entry) =>
+    asNumber(entry?.quantity, 0) !== 0 ||
+    asNumber(entry?.availableQty, 0) !== 0 ||
+    asNumber(entry?.reservedQty, 0) !== 0 ||
+    asNumber(entry?.damagedQty, 0) !== 0 ||
+    asNumber(entry?.lostQty, 0) !== 0 ||
+    asNumber(entry?.reorderLevel, 0) !== 0
+  );
 }
 
 async function rebalanceDefaultVariant(productId, { preferVariantId = null, avoidVariantId = null } = {}) {
@@ -335,9 +410,13 @@ export async function createForProduct(req, res) {
     const { resolvedConfig } = await loadProductConfig(productId);
     const body = req.body || {};
     const colors = validateColorsAgainstConfig(extractRequestedColors(body), resolvedConfig);
-    const stock = normalizeStockEntries(body.stock, { resolvedConfig });
+    const requestedStock = normalizeStockEntries(body.stock, { resolvedConfig });
+    const stock = buildInventoryManagedStock(requestedStock);
     const details = validateVariantDetailsAgainstConfig(body.details, resolvedConfig);
     const images = normalizeImages(body.images);
+    const warnings = stockEditTouchesManagedQuantities(body.stock)
+      ? [{ message: "Stock quantities and reorder levels are managed from Inventory. Variant stock values were ignored." }]
+      : [];
 
     const hasExistingVariant = !!(await Variant.exists({ productId }));
     const requestedDefault = Object.prototype.hasOwnProperty.call(body, "isDefault") ? !!body.isDefault : false;
@@ -349,6 +428,7 @@ export async function createForProduct(req, res) {
       productId,
       price: Number(body.price),
       discount: normalizeDiscount(body.discount),
+      taxRate: normalizeTaxRateInput(body.taxRate),
       images,
       colors,
       sizeLabel: deriveVariantSizeLabel(stock),
@@ -372,9 +452,21 @@ export async function createForProduct(req, res) {
     });
 
     const variant = await Variant.findById(doc._id).lean();
+    await recordAuditEvent({
+      req,
+      action: "VARIANT_CREATED",
+      entityType: "VARIANT",
+      entityId: String(doc._id),
+      entityDisplayId: String((variant || doc)?.sizeLabel || doc._id),
+      after: variant || (doc.toObject ? doc.toObject() : doc),
+      metadata: {
+        productId: String(productId),
+        taxRate: Number((variant?.taxRate ?? doc.taxRate ?? resolveDefaultTaxRate()).toFixed(4)),
+      },
+    });
     return res.status(201).json({
       variant: mapAdminVariantListItem(variant || doc, { stock }),
-      warnings: [],
+      warnings,
     });
   } catch (err) {
     if (err?.statusCode === 404) return res.status(404).json({ error: err.message });
@@ -384,6 +476,7 @@ export async function createForProduct(req, res) {
     if (
       String(err?.message || "").includes("stock")
       || String(err?.message || "").includes("sizeLabel")
+      || String(err?.message || "").includes("taxRate")
       || String(err?.message || "").includes("Only one stock entry")
       || String(err?.message || "").includes("Category size configuration")
       || String(err?.message || "").includes("variant.details.")
@@ -402,11 +495,25 @@ export async function listForProduct(req, res) {
     }
 
     const variants = await Variant.find({ productId })
-      .select("_id productId price discount images colors color sizeLabel stock details isDefault isActive createdAt")
+      .select("_id productId price discount taxRate images colors color sizeLabel stock details isDefault isActive createdAt")
       .sort({ isDefault: -1, createdAt: 1 })
       .lean();
+    const inventoryRows = variants.length
+      ? await Inventory.find({ variantId: { $in: variants.map((variant) => variant._id) } })
+        .select("variantId stockKey sizeLabel quantity availableQty reservedQty damagedQty lostQty reorderLevel")
+        .lean()
+      : [];
+    const inventoryByVariant = new Map();
+    for (const row of inventoryRows) {
+      const key = String(row.variantId || "");
+      if (!inventoryByVariant.has(key)) inventoryByVariant.set(key, []);
+      inventoryByVariant.get(key).push(row);
+    }
+    const canonicalVariants = variants.map((variant) =>
+      overlayVariantStockWithInventory(variant, inventoryByVariant.get(String(variant._id || "")) || [])
+    );
 
-    return res.json(mapVariantList(variants));
+    return res.json(mapVariantList(canonicalVariants));
   } catch (err) {
     return res.status(500).json({ error: err.message || "Failed to list variants" });
   }
@@ -430,6 +537,7 @@ export async function updateVariant(req, res) {
 
     if (Object.prototype.hasOwnProperty.call(body, "price")) patch.price = Number(body.price);
     if (Object.prototype.hasOwnProperty.call(body, "discount")) patch.discount = normalizeDiscount(body.discount);
+    if (Object.prototype.hasOwnProperty.call(body, "taxRate")) patch.taxRate = normalizeTaxRateInput(body.taxRate);
     if (Object.prototype.hasOwnProperty.call(body, "images")) patch.images = normalizeImages(body.images);
     if (Object.prototype.hasOwnProperty.call(body, "isDefault")) patch.isDefault = !!body.isDefault;
     if (Object.prototype.hasOwnProperty.call(body, "isActive")) patch.isActive = !!body.isActive;
@@ -448,13 +556,21 @@ export async function updateVariant(req, res) {
     }
 
     let stock = null;
+    let warnings = [];
     if (Object.prototype.hasOwnProperty.call(body, "stock")) {
-      stock = normalizeStockEntries(body.stock, {
+      const requestedStock = normalizeStockEntries(body.stock, {
         existingStock: existingVariant.stock || [],
         resolvedConfig,
       });
+      const existingInventoryRows = await Inventory.find({ variantId })
+        .select("stockKey sizeLabel quantity availableQty reservedQty damagedQty lostQty reorderLevel")
+        .lean();
+      stock = buildInventoryManagedStock(requestedStock, existingInventoryRows);
       patch.stock = stock;
       patch.sizeLabel = deriveVariantSizeLabel(stock);
+      if (stockEditTouchesManagedQuantities(body.stock)) {
+        warnings = [{ message: "Stock quantities and reorder levels are managed from Inventory. Variant stock values were ignored." }];
+      }
     }
 
     const update = shouldTouchColors
@@ -481,11 +597,25 @@ export async function updateVariant(req, res) {
     });
 
     const refreshedVariant = await Variant.findById(variantId).lean();
+    await recordAuditEvent({
+      req,
+      action: "VARIANT_UPDATED",
+      entityType: "VARIANT",
+      entityId: String(variantId),
+      entityDisplayId: String((refreshedVariant || variant)?.sizeLabel || variantId),
+      before: existingVariant,
+      after: refreshedVariant || variant,
+      metadata: {
+        productId: String(existingVariant.productId),
+        taxRateChanged: Object.prototype.hasOwnProperty.call(patch, "taxRate"),
+        taxRate: Number(((refreshedVariant || variant)?.taxRate ?? resolveDefaultTaxRate()).toFixed(4)),
+      },
+    });
     return res.json({
       variant: mapAdminVariantListItem(refreshedVariant || variant, {
         stock: Array.isArray((refreshedVariant || variant)?.stock) ? (refreshedVariant || variant).stock : [],
       }),
-      warnings: [],
+      warnings,
     });
   } catch (err) {
     if (err?.statusCode === 404) return res.status(404).json({ error: err.message });
@@ -495,6 +625,7 @@ export async function updateVariant(req, res) {
     if (
       String(err?.message || "").includes("stock")
       || String(err?.message || "").includes("sizeLabel")
+      || String(err?.message || "").includes("taxRate")
       || String(err?.message || "").includes("Only one stock entry")
       || String(err?.message || "").includes("Category size configuration")
       || String(err?.message || "").includes("variant.details.")

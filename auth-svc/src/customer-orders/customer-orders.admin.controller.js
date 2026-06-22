@@ -2,6 +2,10 @@ import mongoose from "mongoose";
 import CustomerOrder from "./customer-orders.model.js";
 import PhysicalHandover from "./customer-orders.handover.model.js";
 import CancellationCase from "./customer-orders.cancellation-case.model.js";
+import OrderItemEscalation from "./customer-orders.escalation.model.js";
+import ReturnExchangeCase from "./customer-orders.return-exchange-case.model.js";
+import ExchangeCoupon from "./customer-orders.exchange-coupon.model.js";
+import CheckoutSession from "./customer-orders.checkout-session.model.js";
 import StorefrontCategoryRead from "./customer-orders.storefront-category.model.js";
 import StorefrontProductRead from "./customer-orders.storefront-product.model.js";
 import {
@@ -15,11 +19,16 @@ import {
   buildOrderItemId,
   CANCELLATION_QUEUE_STATUSES,
   FINAL_CANCELLATION_STATUSES,
+  getItemSlaSortPriority,
+  getItemHoursInLane,
+  normalizeSlaStatus,
   mapOrder,
   normalizeItemFulfillmentStatus,
   normalizePaymentStatus,
   PACKAGING_QUEUE_STATUSES,
   PROCESSING_QUEUE_STATUSES,
+  resolveFulfillmentLaneKey,
+  resolveFulfillmentStage,
   resolveOrderDisplayId,
   resolveOrderFulfillmentStatus,
   resolveOrderPaymentStatus,
@@ -52,6 +61,7 @@ import {
   routeAdminOrderItemCancellation,
   shippingConfirmReceipt,
   shippingRejectReceipt,
+  shipOrderItem,
   startReturnExchangeInvestigation,
   startPackagingOrderItem,
   startShippingOrderItem,
@@ -60,7 +70,7 @@ import {
 } from "./customer-orders.service.js";
 
 const CANCELLED_ITEM_STATUSES = new Set(FINAL_CANCELLATION_STATUSES);
-const REVENUE_PAYMENT_STATUSES = new Set(["paid", "refund_pending", "partially_refunded", "refunded"]);
+const REVENUE_PAYMENT_STATUSES = new Set(["paid", "manual_external_resolution"]);
 const DASHBOARD_RANGE_PRESETS = {
   today: { label: "Today", days: 1, granularity: "day" },
   this_week: { label: "This week", granularity: "day" },
@@ -89,6 +99,18 @@ const PENDING_ORDER_STATUSES = new Set([
   "PARTIALLY_SHIPPED",
   "PARTIALLY_CANCELLED",
 ]);
+const FULFILLMENT_DASHBOARD_STATUSES = new Set([
+  "RESERVED",
+  "PICKED_FROM_WAREHOUSE",
+  "HANDED_TO_PACKAGING",
+  "PACKAGING_RECEIVED",
+  "PACKAGING_IN_PROGRESS",
+  "PACKED",
+  "HANDED_TO_SHIPPING",
+  "SHIPPING_RECEIVED",
+  "SHIPPING_IN_PROGRESS",
+  "SHIPPED",
+]);
 
 function normalizePositiveInteger(value, fallback) {
   const parsed = Number(value);
@@ -112,6 +134,14 @@ function asDate(value) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function compareDatesAsc(left, right) {
+  const leftDate = asDate(left);
+  const rightDate = asDate(right);
+  const leftTime = leftDate ? leftDate.getTime() : Number.MAX_SAFE_INTEGER;
+  const rightTime = rightDate ? rightDate.getTime() : Number.MAX_SAFE_INTEGER;
+  return leftTime - rightTime;
 }
 
 function bucketDay(date) {
@@ -246,6 +276,51 @@ function getProductSnapshot(item) {
 
 function getActorId(req) {
   return normalizeString(req.auth?.userId);
+}
+
+function sumBy(items = [], selector) {
+  return items.reduce((total, entry) => total + asNumber(selector(entry), 0), 0);
+}
+
+export function buildOrdersDashboardExtras({
+  cases = [],
+  coupons = [],
+  checkoutSessions = [],
+  withinWindow = () => false,
+} = {}) {
+  const issueCases = cases.filter(
+    (entry) => withinWindow(entry.createdAt) && String(entry.kind || "").toUpperCase() === "RETURN"
+  );
+  const exchangeCases = cases.filter(
+    (entry) => withinWindow(entry.createdAt) && String(entry.kind || "").toUpperCase() === "EXCHANGE"
+  );
+  const pendingIssueInvestigations = cases.filter((entry) => {
+    if (!withinWindow(entry.createdAt)) return false;
+    const status = String(entry.status || "").toUpperCase();
+    return status.includes("UNDER_INVESTIGATION") || status.endsWith("_REQUESTED");
+  });
+  const issuedCoupons = coupons.filter((entry) => withinWindow(entry.createdAt));
+  const consumedCoupons = coupons.filter((entry) => withinWindow(entry.usedAt));
+  const failedCheckouts = checkoutSessions.filter((entry) => {
+    const status = String(entry.status || "").toUpperCase();
+    return status === "PAYMENT_FAILED" && withinWindow(entry.failedAt || entry.updatedAt || entry.createdAt);
+  });
+  const abandonedCheckouts = checkoutSessions.filter((entry) => {
+    const status = String(entry.status || "").toUpperCase();
+    return status === "ABANDONED" && withinWindow(entry.abandonedAt || entry.updatedAt || entry.createdAt);
+  });
+
+  return {
+    issueCases: issueCases.length,
+    exchangeCases: exchangeCases.length,
+    pendingIssueInvestigations: pendingIssueInvestigations.length,
+    couponsIssued: issuedCoupons.length,
+    couponsIssuedValue: sumBy(issuedCoupons, (entry) => entry?.valueAmount),
+    couponsConsumed: consumedCoupons.length,
+    couponsConsumedValue: sumBy(consumedCoupons, (entry) => entry?.valueAmount),
+    failedCheckouts: failedCheckouts.length,
+    abandonedCheckouts: abandonedCheckouts.length,
+  };
 }
 
 export function normalizeDashboardRange(value) {
@@ -482,11 +557,12 @@ function buildSelectedRangeWeeklyTrend(orders, window) {
   return points;
 }
 
-export function buildOrdersDashboardPayload(orders = [], { query = {}, now = new Date() } = {}) {
+export function buildOrdersDashboardPayload(orders = [], { query = {}, now = new Date(), extras = {} } = {}) {
   const window = resolveDashboardWindow(query, now);
   const trend = new Map();
   const statusCounts = new Map();
   const topSellingProducts = new Map();
+  const topSellingCategories = new Map();
   const recentOrders = [];
 
   const currentSummary = {
@@ -556,7 +632,10 @@ export function buildOrdersDashboardPayload(orders = [], { query = {}, now = new
       if (CANCELLED_ITEM_STATUSES.has(itemStatus)) continue;
 
       const product = getProductSnapshot(item);
+      const categoryId = String(item?.categoryId || "").trim() || "uncategorized";
+      const categoryLabel = normalizeString(item?.categoryLabel, "Uncategorized") || "Uncategorized";
       addTopMetric(topSellingProducts, product.id, product.label, quantity, itemRevenue);
+      addTopMetric(topSellingCategories, categoryId, categoryLabel, quantity, itemRevenue);
     }
   }
 
@@ -565,6 +644,9 @@ export function buildOrdersDashboardPayload(orders = [], { query = {}, now = new
     { key: "packaging", label: "Packaging queue", count: currentSummary.packaging, href: "/admin/orders/packaging" },
     { key: "shipping", label: "Shipping queue", count: currentSummary.shipping, href: "/admin/orders/shipping" },
     { key: "cancellations", label: "Cancellation queue", count: currentSummary.cancellations, href: "/admin/orders/cancellations" },
+    { key: "issue_cases", label: "Issue / exchange investigations", count: Math.max(0, asNumber(extras.pendingIssueInvestigations, 0)), href: "/admin/orders/returns-exchanges" },
+    { key: "failed_checkouts", label: "Failed checkouts", count: Math.max(0, asNumber(extras.failedCheckouts, 0)), href: "/admin/orders/dashboard" },
+    { key: "abandoned_checkouts", label: "Abandoned checkouts", count: Math.max(0, asNumber(extras.abandonedCheckouts, 0)), href: "/admin/orders/dashboard" },
   ];
 
   return {
@@ -575,7 +657,19 @@ export function buildOrdersDashboardPayload(orders = [], { query = {}, now = new
       orders: totals.orders,
       averageOrderValue: totals.paidOrders ? totals.revenue / totals.paidOrders : 0,
       pendingOrders: totals.pendingOrders,
+      pendingProcessing: currentSummary.processing,
+      pendingPackaging: currentSummary.packaging,
+      pendingShipping: currentSummary.shipping,
       cancelledOrders: totals.cancelledOrders,
+      issueCases: Math.max(0, asNumber(extras.issueCases, 0)),
+      exchangeCases: Math.max(0, asNumber(extras.exchangeCases, 0)),
+      pendingIssueInvestigations: Math.max(0, asNumber(extras.pendingIssueInvestigations, 0)),
+      couponsIssued: Math.max(0, asNumber(extras.couponsIssued, 0)),
+      couponsIssuedValue: Math.max(0, asNumber(extras.couponsIssuedValue, 0)),
+      couponsConsumed: Math.max(0, asNumber(extras.couponsConsumed, 0)),
+      couponsConsumedValue: Math.max(0, asNumber(extras.couponsConsumedValue, 0)),
+      failedCheckouts: Math.max(0, asNumber(extras.failedCheckouts, 0)),
+      abandonedCheckouts: Math.max(0, asNumber(extras.abandonedCheckouts, 0)),
     },
     salesTrend: {
       granularity: window.granularity,
@@ -596,6 +690,7 @@ export function buildOrdersDashboardPayload(orders = [], { query = {}, now = new
     },
     recentOrders,
     topSellingProducts: topMetrics(topSellingProducts),
+    topSellingCategories: topMetrics(topSellingCategories),
     actionRequired,
   };
 }
@@ -608,6 +703,7 @@ function buildSearchRegex(query = {}) {
 
 function matchesSearch(order, pattern) {
   if (!pattern) return true;
+  if (pattern.test(normalizeString(order?.displayId))) return true;
   if (pattern.test(normalizeString(order?.paymentReference))) return true;
   if (pattern.test(normalizeString(order?.addressSnapshot?.fullName))) return true;
   return (order.items || []).some((item) => (
@@ -632,7 +728,7 @@ export function laneMatchesItem(lane, item) {
   }
 
   if (lane === "packaging") {
-    return ["HANDED_TO_PACKAGING", "PACKAGING_RECEIVED", "PACKAGING_IN_PROGRESS", "PACKED", "HANDED_TO_SHIPPING"].includes(status) ||
+    return ["HANDED_TO_PACKAGING", "PACKAGING_RECEIVED", "PACKAGING_IN_PROGRESS", "PACKED"].includes(status) ||
       (
         status === "CANCEL_REQUESTED" &&
         owner === "PACKAGING_MANAGER" &&
@@ -655,19 +751,40 @@ export function laneMatchesItem(lane, item) {
   return true;
 }
 
+export function laneCompletedMatchesItem(lane, item) {
+  const status = normalizeItemFulfillmentStatus(item?.fulfillmentStatus, "RESERVED");
+
+  if (lane === "processing") {
+    return !!(item?.pickedAt || item?.handedToPackagingAt) &&
+      !["RESERVED", "PICKED_FROM_WAREHOUSE", "HANDED_TO_PACKAGING", "CANCEL_REQUESTED"].includes(status);
+  }
+
+  if (lane === "packaging") {
+    return !!(item?.packagingReceivedAt || item?.packagingStartedAt || item?.packedAt || item?.handedToShippingAt) &&
+      !["HANDED_TO_PACKAGING", "PACKAGING_RECEIVED", "PACKAGING_IN_PROGRESS", "PACKED", "CANCEL_REQUESTED"].includes(status);
+  }
+
+  if (lane === "shipping") {
+    return status === "SHIPPED" || status === "DELIVERED" || !!item?.shippedAt;
+  }
+
+  return false;
+}
+
 function assertSystemAdminAccess(req) {
   const systemLevel = normalizeString(req.auth?.systemLevel).toUpperCase();
   if (systemLevel === "ADMIN" || systemLevel === "SUPER") return systemLevel;
   throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
 }
 
-function attachPendingArtifacts(order, handoversByItem, cancellationCasesByItem) {
+function attachPendingArtifacts(order, handoversByItem, cancellationCasesByItem, escalationsByItem) {
   return {
     ...order,
     items: (order.items || []).map((item, index) => {
       const itemId = buildOrderItemId(item, index);
       const handover = handoversByItem.get(itemId) || null;
       const caseDoc = cancellationCasesByItem.get(itemId) || null;
+      const escalation = escalationsByItem.get(itemId) || null;
       return {
         ...item,
         pendingHandover: handover ? {
@@ -684,6 +801,16 @@ function attachPendingArtifacts(order, handoversByItem, cancellationCasesByItem)
           status: caseDoc.status,
           reason: caseDoc.reason || "",
         } : null,
+        activeEscalation: escalation ? {
+          _id: escalation._id,
+          lane: escalation.lane,
+          responsibleOwner: escalation.responsibleOwner,
+          triggeredAt: escalation.triggeredAt,
+          hoursPending: escalation.hoursPending,
+          reason: escalation.reason,
+          status: escalation.status,
+          resolvedAt: escalation.resolvedAt,
+        } : null,
       };
     }),
   };
@@ -693,11 +820,12 @@ async function enrichOrders(orders = []) {
   const itemIds = orders.flatMap((order) => (order.items || []).map((item, index) => buildOrderItemId(item, index)));
   if (!itemIds.length) return orders;
 
-  const [handovers, cancellationCases] = await Promise.all([
+  const [handovers, cancellationCases, escalations] = await Promise.all([
     PhysicalHandover.find({ orderItemId: { $in: itemIds }, status: { $in: ["PENDING_RECEIPT", "RECEIVED", "REJECTED"] } })
       .sort({ createdAt: -1 })
       .lean(),
     CancellationCase.find({ orderItemId: { $in: itemIds }, status: "OPEN" }).lean(),
+    OrderItemEscalation.find({ orderItemId: { $in: itemIds }, status: "OPEN" }).sort({ createdAt: -1 }).lean(),
   ]);
 
   const handoversByItem = new Map();
@@ -705,13 +833,18 @@ async function enrichOrders(orders = []) {
     if (!handoversByItem.has(handover.orderItemId)) handoversByItem.set(handover.orderItemId, handover);
   }
   const cancellationCasesByItem = new Map(cancellationCases.map((caseDoc) => [caseDoc.orderItemId, caseDoc]));
+  const escalationsByItem = new Map();
+  for (const escalation of escalations) {
+    if (!escalationsByItem.has(escalation.orderItemId)) escalationsByItem.set(escalation.orderItemId, escalation);
+  }
 
-  return orders.map((order) => attachPendingArtifacts(order, handoversByItem, cancellationCasesByItem));
+  return orders.map((order) => attachPendingArtifacts(order, handoversByItem, cancellationCasesByItem, escalationsByItem));
 }
 
 async function loadOrdersForLane({ lane = "overview", query = {} }) {
   const page = normalizePositiveInteger(query.page, 1);
   const limit = normalizePositiveInteger(query.limit, 25);
+  const includeCompleted = ["1", "true", "yes"].includes(normalizeString(query.includeCompleted).toLowerCase());
   const paymentStatusFilter = normalizePaymentStatus(query.paymentStatus, "");
   const orderStatusFilter = normalizeString(query.orderStatus)
     .split(",")
@@ -745,6 +878,7 @@ async function loadOrdersForLane({ lane = "overview", query = {} }) {
         if (stockKeyFilter && normalizeString(item?.stockKey).toUpperCase() !== stockKeyFilter) return false;
         const status = normalizeItemFulfillmentStatus(item?.fulfillmentStatus, "RESERVED");
         if (stateFilter.length && !stateFilter.includes(status)) return false;
+        if (includeCompleted && laneCompletedMatchesItem(lane, item)) return true;
         return laneMatchesItem(lane, item);
       });
       if (!nextItems.length) return null;
@@ -757,6 +891,17 @@ async function loadOrdersForLane({ lane = "overview", query = {} }) {
       };
     })
     .filter(Boolean);
+
+  laneFilteredOrders.sort((left, right) => {
+    const leftPriority = Math.min(
+      ...(left.items || []).map((item) => getItemSlaSortPriority(item, { orderPlacedAt: left.placedAt, activeEscalation: item?.activeEscalation }))
+    );
+    const rightPriority = Math.min(
+      ...(right.items || []).map((item) => getItemSlaSortPriority(item, { orderPlacedAt: right.placedAt, activeEscalation: item?.activeEscalation }))
+    );
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+    return compareDatesAsc(left.placedAt, right.placedAt);
+  });
 
   const total = laneFilteredOrders.length;
   const paginated = laneFilteredOrders.slice((page - 1) * limit, page * limit);
@@ -793,6 +938,102 @@ async function loadOrderOperationsItems(query = {}) {
   return {
     summary,
     ...paginated,
+  };
+}
+
+function buildFulfillmentDashboardItem(order, item) {
+  return {
+    orderId: order.id,
+    orderDisplayId: order.displayId || order.id,
+    itemId: item.id,
+    customerName: normalizeString(order.addressSnapshot?.fullName, "Customer"),
+    currentFulfillmentStatus: item.fulfillmentStatus,
+    currentStage: item.currentStage || resolveFulfillmentStage(item),
+    currentOwner: item.currentLaneOwner || item.physicalOwner,
+    customerOrderedDate: item.customerOrderedDate || order.placedAt || null,
+    targetCompletionDate: item.targetCompletionDate || null,
+    laneAssignedAt: item.laneAssignedAt || null,
+    lastActionedAt: item.lastActionedAt || null,
+    slaStatus: normalizeSlaStatus(item.slaStatus, "ON_TRACK"),
+    hoursInLane: asNumber(item.hoursInLane, getItemHoursInLane(item, { orderPlacedAt: order.placedAt })),
+    activeEscalation: item.activeEscalation || null,
+    courierName: normalizeString(item.courierName),
+    outboundTrackingNumber: normalizeString(item.outboundTrackingNumber),
+  };
+}
+
+export function buildFulfillmentDashboardSummary(items = []) {
+  return {
+    processing: items.filter((item) => item.currentStage === "Processing").length,
+    packaging: items.filter((item) => item.currentStage === "Packaging").length,
+    shipping: items.filter((item) => item.currentStage === "Shipping").length,
+    shipped: items.filter((item) => item.currentStage === "Shipped").length,
+    delayed: items.filter((item) => item.slaStatus === "DELAYED").length,
+    violated: items.filter((item) => item.slaStatus === "VIOLATED").length,
+    total: items.length,
+  };
+}
+
+function normalizeDashboardOversightBucket(value = "") {
+  const normalized = normalizeString(value).toLowerCase();
+  return ["processing", "packaging", "shipping", "shipped", "delayed", "violated"].includes(normalized)
+    ? normalized
+    : "";
+}
+
+export function matchesDashboardOversightBucket(item, bucket) {
+  if (!bucket) return true;
+  if (bucket === "processing") return item.currentStage === "Processing";
+  if (bucket === "packaging") return item.currentStage === "Packaging";
+  if (bucket === "shipping") return item.currentStage === "Shipping";
+  if (bucket === "shipped") return item.currentStage === "Shipped";
+  if (bucket === "delayed") return item.slaStatus === "DELAYED";
+  if (bucket === "violated") return item.slaStatus === "VIOLATED";
+  return true;
+}
+
+export function filterFulfillmentDashboardItems(items = [], { escalationsOnly = false, bucket = "" } = {}) {
+  return items
+    .filter((item) => {
+      const isEscalated = item.slaStatus === "VIOLATED" || normalizeString(item.activeEscalation?.status).toUpperCase() === "OPEN";
+      if (escalationsOnly) return isEscalated && matchesDashboardOversightBucket(item, bucket || "violated");
+      return !isEscalated && matchesDashboardOversightBucket(item, bucket);
+    })
+    .sort((left, right) => compareDatesAsc(left.customerOrderedDate, right.customerOrderedDate));
+}
+
+async function loadFulfillmentDashboardItems(query = {}, { escalationsOnly = false } = {}) {
+  const page = normalizePositiveInteger(query.page, 1);
+  const limit = normalizePositiveInteger(query.limit, 25);
+  const searchPattern = buildSearchRegex(query);
+  const bucket = normalizeDashboardOversightBucket(query.bucket);
+
+  const orders = await CustomerOrder.find({})
+    .sort({ placedAt: 1, createdAt: 1 })
+    .lean();
+
+  let filteredOrders = orders.filter((order) => matchesSearch(order, searchPattern));
+  filteredOrders = await enrichOrders(filteredOrders);
+
+  const items = filteredOrders.flatMap((order) => {
+    const mappedOrder = mapOrder(order);
+    return (mappedOrder.items || [])
+      .filter((item) => FULFILLMENT_DASHBOARD_STATUSES.has(normalizeItemFulfillmentStatus(item.fulfillmentStatus, "")))
+      .map((item) => buildFulfillmentDashboardItem(mappedOrder, item));
+  });
+
+  const filteredItems = filterFulfillmentDashboardItems(items, { escalationsOnly, bucket });
+
+  const total = filteredItems.length;
+  const paginatedItems = filteredItems.slice((page - 1) * limit, page * limit);
+
+  return {
+    summary: buildFulfillmentDashboardSummary(filteredItems),
+    items: paginatedItems,
+    total,
+    page,
+    limit,
+    totalPages: total ? Math.ceil(total / limit) : 1,
   };
 }
 
@@ -882,13 +1123,49 @@ export async function getOrdersDashboard(req, res) {
       .sort({ placedAt: -1, createdAt: -1 })
       .lean();
     const enrichedOrders = await enrichOrders(orders);
+    const baseDashboard = buildOrdersDashboardPayload(enrichedOrders, {
+      query: req.query || {},
+    });
+    const fromDate = asDate(baseDashboard.range?.from);
+    const toDate = asDate(baseDashboard.range?.to);
+    const withinWindow = (value) => {
+      const date = asDate(value);
+      if (!date || !fromDate || !toDate) return false;
+      return date >= fromDate && date <= toDate;
+    };
+
+    const [cases, coupons, checkoutSessions] = await Promise.all([
+      ReturnExchangeCase.find({}).select("kind status createdAt").lean(),
+      ExchangeCoupon.find({}).select("createdAt usedAt status valueAmount").lean(),
+      CheckoutSession.find({}).select("status createdAt updatedAt failedAt abandonedAt").lean(),
+    ]);
+
+    const extras = buildOrdersDashboardExtras({ cases, coupons, checkoutSessions, withinWindow });
+
     return res.json({
       dashboard: buildOrdersDashboardPayload(enrichedOrders, {
         query: req.query || {},
+        extras,
       }),
     });
   } catch (err) {
     return res.status(500).json({ error: err.message || "Failed to load orders dashboard" });
+  }
+}
+
+export async function getOrdersFulfillmentDashboard(req, res) {
+  try {
+    return res.json(await loadFulfillmentDashboardItems(req.query || {}, { escalationsOnly: false }));
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "Failed to load fulfillment dashboard" });
+  }
+}
+
+export async function getOrdersEscalationsDashboard(req, res) {
+  try {
+    return res.json(await loadFulfillmentDashboardItems(req.query || {}, { escalationsOnly: true }));
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "Failed to load escalations dashboard" });
   }
 }
 
@@ -1031,6 +1308,7 @@ export async function processingPickOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to pick order item"
   );
@@ -1043,6 +1321,7 @@ export async function processingHandoverToPackagingOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to hand over order item to packaging"
   );
@@ -1055,6 +1334,7 @@ export async function packagingConfirmReceiptOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to confirm packaging receipt"
   );
@@ -1068,6 +1348,7 @@ export async function packagingRejectReceiptOrderItem(req, res) {
       itemId: req.params.itemId,
       actorId: getActorId(req),
       reason: req.body?.reason,
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to reject packaging receipt"
   );
@@ -1080,6 +1361,7 @@ export async function packagingStartOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to start packaging"
   );
@@ -1092,6 +1374,7 @@ export async function packagingVerifyOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to verify package"
   );
@@ -1104,6 +1387,7 @@ export async function packagingPrintLabelOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to print shipping label"
   );
@@ -1117,6 +1401,7 @@ export async function packagingReprintLabelOrderItem(req, res) {
       itemId: req.params.itemId,
       actorId: getActorId(req),
       reason: req.body?.reason,
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to reprint shipping label"
   );
@@ -1129,6 +1414,7 @@ export async function packagingMarkPackedOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to mark item packed"
   );
@@ -1141,6 +1427,7 @@ export async function packagingHandoverToShippingOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to hand over item to shipping"
   );
@@ -1153,6 +1440,7 @@ export async function shippingConfirmReceiptOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to confirm shipping receipt"
   );
@@ -1166,6 +1454,7 @@ export async function shippingRejectReceiptOrderItem(req, res) {
       itemId: req.params.itemId,
       actorId: getActorId(req),
       reason: req.body?.reason,
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to reject shipping receipt"
   );
@@ -1178,6 +1467,7 @@ export async function shippingStartOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to start shipping"
   );
@@ -1191,6 +1481,7 @@ export async function shippingAssignCourierOrderItem(req, res) {
       itemId: req.params.itemId,
       actorId: getActorId(req),
       courierName: req.body?.courierName,
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to assign courier"
   );
@@ -1204,6 +1495,7 @@ export async function shippingTrackingOrderItem(req, res) {
       itemId: req.params.itemId,
       actorId: getActorId(req),
       trackingNumber: req.body?.trackingNumber,
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to save tracking number"
   );
@@ -1216,12 +1508,34 @@ export async function shippingMarkShippedOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to mark item shipped"
   );
 }
 
+export async function shippingShipOrderItem(req, res) {
+  return withMappedOrder(
+    res,
+    shipOrderItem({
+      orderId: req.params.id,
+      itemId: req.params.itemId,
+      actorId: getActorId(req),
+      courierName: req.body?.courierName,
+      trackingNumber: req.body?.trackingNumber,
+      expectedStatus: req.body?.expectedStatus,
+    }),
+    "Failed to ship item"
+  );
+}
+
 export async function adminMarkDeliveredOrderItem(req, res) {
+  try {
+    assertSystemAdminAccess(req);
+  } catch (err) {
+    return res.status(err.statusCode || 403).json({ error: err.message || "Forbidden" });
+  }
+
   return withMappedOrder(
     res,
     markOrderItemDelivered({
@@ -1229,6 +1543,7 @@ export async function adminMarkDeliveredOrderItem(req, res) {
       itemId: req.params.itemId,
       actorId: getActorId(req),
       actorRole: "SHIPPING_OPERATOR",
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to mark item delivered"
   );
@@ -1241,6 +1556,7 @@ export async function adminCancelOrderItem(req, res) {
       orderItemId: req.params.itemId,
       actorId: getActorId(req),
       reason: req.body?.reason || "ADMIN_CANCELLED",
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to cancel order item"
   );
@@ -1253,6 +1569,7 @@ export async function cancellationHandoverOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to hand over item to cancellation manager"
   );
@@ -1265,6 +1582,7 @@ export async function cancellationConfirmReceiptOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to confirm cancellation receipt"
   );
@@ -1277,6 +1595,7 @@ export async function cancellationRestockOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to restock cancelled item"
   );
@@ -1289,6 +1608,7 @@ export async function cancellationMarkDamagedOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to mark cancelled item damaged"
   );
@@ -1301,6 +1621,7 @@ export async function cancellationMarkLostOrderItem(req, res) {
       orderId: req.params.id,
       itemId: req.params.itemId,
       actorId: getActorId(req),
+      expectedStatus: req.body?.expectedStatus,
     }),
     "Failed to mark cancelled item lost"
   );

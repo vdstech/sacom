@@ -18,7 +18,7 @@ function asDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export const ORDER_OPERATION_TABS = ["processing", "shipping", "shipped", "delivered"];
+export const ORDER_OPERATION_TABS = ["processing", "shipping", "delivery", "shipped", "delivered"];
 export const ORDER_OPERATION_SORTS = ["newest", "oldest", "price_desc", "price_asc"];
 
 export function normalizeOrderOperationTab(value, fallback = "processing") {
@@ -50,7 +50,7 @@ export function orderOperationTabMatchesItem(tab, item) {
       (status === "CANCEL_REQUESTED" && pendingType === "PACKAGING_TO_SHIPPING" && pendingStatus === "PENDING_RECEIPT");
   }
 
-  if (normalizedTab === "shipped") return status === "SHIPPED";
+  if (normalizedTab === "delivery" || normalizedTab === "shipped") return status === "SHIPPED";
   if (normalizedTab === "delivered") return status === "DELIVERED";
   return false;
 }
@@ -59,6 +59,7 @@ export function buildOrderOperationSummary(items = []) {
   return {
     processing: items.filter((item) => orderOperationTabMatchesItem("processing", item)).length,
     shipping: items.filter((item) => orderOperationTabMatchesItem("shipping", item)).length,
+    delivery: items.filter((item) => orderOperationTabMatchesItem("delivery", item)).length,
     shipped: items.filter((item) => orderOperationTabMatchesItem("shipped", item)).length,
     delivered: items.filter((item) => orderOperationTabMatchesItem("delivered", item)).length,
   };
@@ -142,7 +143,7 @@ export function filterOrderOperationItems(items = [], options = {}) {
     if (statusFilters.length && !statusFilters.includes(normalizeItemFulfillmentStatus(item?.status || item?.fulfillmentStatus, ""))) {
       return false;
     }
-    if (tab === "shipped" && normalizedCourier && !normalizeString(item?.courierName).toLowerCase().includes(normalizedCourier)) return false;
+    if (["delivery", "delivered", "shipped"].includes(tab) && normalizedCourier && !normalizeString(item?.courierName).toLowerCase().includes(normalizedCourier)) return false;
     if (!matchesOrderOperationSearch(item, searchPattern)) return false;
     return true;
   });

@@ -1,5 +1,11 @@
 import mongoose from "mongoose";
 
+function resolveDefaultTaxRate() {
+  const numeric = Number(process.env.DEFAULT_PRODUCT_TAX_RATE);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric >= 1) return 0.05;
+  return numeric;
+}
+
 const VariantColorSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -13,6 +19,10 @@ const VariantStockSchema = new mongoose.Schema(
     stockKey: { type: String, required: true, trim: true, uppercase: true },
     sizeLabel: { type: String, default: "", trim: true },
     quantity: { type: Number, default: 0, min: 0 },
+    availableQty: { type: Number, default: 0, min: 0 },
+    reservedQty: { type: Number, default: 0, min: 0 },
+    damagedQty: { type: Number, default: 0, min: 0 },
+    lostQty: { type: Number, default: 0, min: 0 },
     reorderLevel: { type: Number, default: 0, min: 0 },
   },
   { _id: false }
@@ -31,6 +41,7 @@ const VariantSchema = new mongoose.Schema(
       value: { type: Number, default: 0, min: 0 },
       label: { type: String, default: "" },
     },
+    taxRate: { type: Number, default: resolveDefaultTaxRate, min: 0, max: 0.9999 },
     images: [
       {
         url: { type: String, required: true },
@@ -83,11 +94,24 @@ VariantSchema.pre("validate", function (next) {
     }
   }
 
+  const normalizedTaxRate = Number(this.taxRate);
+  if (!Number.isFinite(normalizedTaxRate) || normalizedTaxRate < 0 || normalizedTaxRate >= 1) {
+    this.taxRate = resolveDefaultTaxRate();
+  } else {
+    this.taxRate = normalizedTaxRate;
+  }
+
   if (Array.isArray(this.stock)) {
     this.stock = this.stock.map((entry) => ({
       stockKey: String(entry?.stockKey || "").trim().toUpperCase(),
       sizeLabel: String(entry?.sizeLabel || "").trim(),
       quantity: Number.isFinite(Number(entry?.quantity)) ? Math.max(0, Number(entry.quantity)) : 0,
+      availableQty: Number.isFinite(Number(entry?.availableQty))
+        ? Math.max(0, Number(entry.availableQty))
+        : (Number.isFinite(Number(entry?.quantity)) ? Math.max(0, Number(entry.quantity)) : 0),
+      reservedQty: Number.isFinite(Number(entry?.reservedQty)) ? Math.max(0, Number(entry.reservedQty)) : 0,
+      damagedQty: Number.isFinite(Number(entry?.damagedQty)) ? Math.max(0, Number(entry.damagedQty)) : 0,
+      lostQty: Number.isFinite(Number(entry?.lostQty)) ? Math.max(0, Number(entry.lostQty)) : 0,
       reorderLevel: Number.isFinite(Number(entry?.reorderLevel)) ? Math.max(0, Number(entry.reorderLevel)) : 0,
     }));
   }

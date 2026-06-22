@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import CheckoutSession from "./customer-orders.checkout-session.model.js";
 import CouponReservation from "./customer-orders.coupon-reservation.model.js";
 import ExchangeCoupon from "./customer-orders.exchange-coupon.model.js";
+import AuditLog from "../audit/audit-log.model.js";
 import {
   expireActiveCoupons,
   expireCheckoutSessionsAndReservations,
@@ -34,6 +35,8 @@ test("expireCheckoutSessionsAndReservations releases active coupon reservations"
   const originalFindSessions = CheckoutSession.find;
   const originalFindReservation = CouponReservation.findById;
   const originalFindCoupon = ExchangeCoupon.findById;
+  const originalAuditCreate = AuditLog.create;
+  const auditEntries = [];
 
   const session = {
     _id: "session-1",
@@ -66,6 +69,10 @@ test("expireCheckoutSessionsAndReservations releases active coupon reservations"
   CheckoutSession.find = async () => [session];
   CouponReservation.findById = async () => reservation;
   ExchangeCoupon.findById = async () => coupon;
+  AuditLog.create = async (payload) => {
+    auditEntries.push(payload);
+    return payload;
+  };
 
   try {
     const result = await expireCheckoutSessionsAndReservations({ now: new Date("2026-05-03T00:00:00.000Z") });
@@ -74,9 +81,13 @@ test("expireCheckoutSessionsAndReservations releases active coupon reservations"
     assert.equal(reservation.status, "EXPIRED");
     assert.equal(coupon.status, "ACTIVE");
     assert.equal(session.couponCode, "");
+    assert.equal(auditEntries.length, 1);
+    assert.equal(auditEntries[0].action, "CHECKOUT_SESSION_EXPIRED");
+    assert.equal(auditEntries[0].entityType, "CHECKOUT_SESSION");
   } finally {
     CheckoutSession.find = originalFindSessions;
     CouponReservation.findById = originalFindReservation;
     ExchangeCoupon.findById = originalFindCoupon;
+    AuditLog.create = originalAuditCreate;
   }
 });

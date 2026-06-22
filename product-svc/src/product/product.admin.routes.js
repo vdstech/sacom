@@ -6,6 +6,8 @@ import { requiresPermission } from "../middleware/requiresPermission.js";
 import { createForProduct, listForProduct, updateVariant } from "../variant/variant.controller.js";
 import { validateCreate as validateVariantCreate, validateUpdate as validateVariantUpdate } from "../variant/variant.validation.js";
 import { getInventoryDashboardSummary, listInventory, listLowStockInventory, listOutOfStockInventory, updateInventory } from "../inventory/inventory.controller.js";
+import * as reviewCtrl from "../review/review.controller.js";
+import { validateModerateReview } from "../review/review.validation.js";
 
 const router = Router();
 
@@ -16,6 +18,11 @@ router.get("/inventory/low-stock", requireAuth, requiresPermission("inventory:re
 router.get("/inventory/out-of-stock", requireAuth, requiresPermission("inventory:read"), listOutOfStockInventory);
 router.get("/inventory/list", requireAuth, requiresPermission("inventory:read"), listInventory);
 router.patch("/inventory/:id", requireAuth, requiresPermission("product:inventory:update"), updateInventory);
+router.get("/reviews", requireAuth, requiresPermission("review:read"), reviewCtrl.adminListReviews);
+router.get("/reviews/:reviewId", requireAuth, requiresPermission("review:read"), reviewCtrl.adminGetReview);
+router.post("/reviews/:reviewId/approve", requireAuth, requiresPermission("review:moderate"), validateModerateReview, reviewCtrl.approveReview);
+router.post("/reviews/:reviewId/reject", requireAuth, requiresPermission("review:moderate"), validateModerateReview, reviewCtrl.rejectReview);
+router.post("/reviews/:reviewId/hide", requireAuth, requiresPermission("review:moderate"), validateModerateReview, reviewCtrl.hideReview);
 router.post("/", requireAuth, requiresPermission("product:create"), validateCreate, ctrl.create);
 router.get("/:id", requireAuth, requiresPermission("product:read"), ctrl.adminGetById);
 router.put("/:id", requireAuth, requiresPermission("product:update"), validateUpdate, ctrl.update);

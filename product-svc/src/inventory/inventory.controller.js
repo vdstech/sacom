@@ -4,6 +4,12 @@ import Product from "../product/product.model.js";
 import Category from "../category/category.model.js";
 import CustomerOrderRead from "./customerOrderRead.model.js";
 import Variant from "../variant/variant.model.js";
+import { recordAuditEvent } from "../audit/audit.service.js";
+import {
+  normalizeInventoryProjectionEntry,
+  projectionEntryDiffers,
+  resolveCanonicalAvailableQuantity,
+} from "./inventory.projection.js";
 
 function asNumber(value, fallback = 0) {
   const num = Number(value);
@@ -27,9 +33,7 @@ function normalizePositiveInteger(value, fallback) {
 }
 
 export function resolveAvailableQuantity(entry) {
-  const availableQty = Number(entry?.availableQty);
-  if (Number.isFinite(availableQty)) return Math.max(0, availableQty);
-  return Math.max(0, asNumber(entry?.quantity, 0));
+  return resolveCanonicalAvailableQuantity(entry);
 }
 
 function buildVariantOptionSummary(variant, fallbackSizeLabel = "") {
@@ -51,11 +55,8 @@ export function buildInventoryDashboardSummary({ items = [], productMap = new Ma
 
   for (const item of items) {
     const variant = variantMap.get(String(item.variantId || "")) || null;
-    const stockEntry = Array.isArray(variant?.stock)
-      ? variant.stock.find((entry) => normalizeString(entry?.stockKey).toUpperCase() === normalizeString(item.stockKey).toUpperCase())
-      : null;
     const product = productMap.get(String(item.productId || "")) || null;
-    const availableStock = resolveAvailableQuantity(stockEntry || item);
+    const availableStock = resolveAvailableQuantity(item);
     const variantSummary = buildVariantOptionSummary(variant, item.sizeLabel);
     const row = {
       inventoryId: String(item._id || ""),
@@ -66,7 +67,7 @@ export function buildInventoryDashboardSummary({ items = [], productMap = new Ma
       stockKey: normalizeString(item.stockKey).toUpperCase(),
       variantSummary,
       sizeLabel: normalizeString(item.sizeLabel),
-      reorderLevel: Math.max(0, asNumber(stockEntry?.reorderLevel, asNumber(item.reorderLevel, 0))),
+      reorderLevel: Math.max(0, asNumber(item.reorderLevel, 0)),
       availableStock,
     };
 
@@ -120,13 +121,13 @@ function buildCategoryName(category, categoryMap) {
 function buildInventoryRiskRows({ items = [], productMap = new Map(), variantMap = new Map(), categoryMap = new Map() }) {
   return items.map((item) => {
     const variant = variantMap.get(String(item.variantId || "")) || null;
-    const stockEntry = Array.isArray(variant?.stock)
-      ? variant.stock.find((entry) => normalizeString(entry?.stockKey).toUpperCase() === normalizeString(item.stockKey).toUpperCase())
-      : null;
     const product = productMap.get(String(item.productId || "")) || null;
     const category = categoryMap.get(String(product?.categoryId || item.categoryId || "")) || null;
-    const availableStock = resolveAvailableQuantity(stockEntry || item);
+    const availableStock = resolveAvailableQuantity(item);
     const variantSummary = buildVariantOptionSummary(variant, item.sizeLabel);
+    const variantProjection = Array.isArray(variant?.stock)
+      ? variant.stock.find((entry) => normalizeString(entry?.stockKey).toUpperCase() === normalizeString(item.stockKey).toUpperCase())
+      : null;
 
     return {
       inventoryId: String(item._id || ""),
@@ -140,7 +141,8 @@ function buildInventoryRiskRows({ items = [], productMap = new Map(), variantMap
       categoryId: String(product?.categoryId || item.categoryId || ""),
       categoryName: buildCategoryName(category, categoryMap),
       availableStock,
-      reorderLevel: Math.max(0, asNumber(stockEntry?.reorderLevel, asNumber(item.reorderLevel, 0))),
+      reorderLevel: Math.max(0, asNumber(item.reorderLevel, 0)),
+      projectionMismatch: projectionEntryDiffers(item, variantProjection),
       updatedAt: item.updatedAt || null,
       isActive: product?.isActive !== false && variant?.isActive !== false,
       status: availableStock === 0 ? "OUT_OF_STOCK" : availableStock < 2 ? "LOW_STOCK" : "IN_STOCK",
@@ -461,16 +463,25 @@ export async function listInventory(req, res) {
       const product = productMap.get(String(doc.productId || ""));
       const sales = salesMap.get(normalizeString(doc.stockKey).toUpperCase());
       const soldQuantity = Math.max(0, asNumber(sales?.soldQuantity, 0));
-      const quantity = Math.max(0, asNumber(doc.quantity, 0));
+      const currentQuantity = resolveAvailableQuantity(doc);
+      const reservedQty = Math.max(0, asNumber(doc.reservedQty, 0));
+      const damagedQty = Math.max(0, asNumber(doc.damagedQty, 0));
+      const lostQty = Math.max(0, asNumber(doc.lostQty, 0));
+      const quantityOnHand = currentQuantity + reservedQty + damagedQty + lostQty;
 
       return {
         ...doc,
         productTitle: normalizeString(product?.title),
         productSlug: normalizeString(product?.slug),
         categoryId: product?.categoryId ? String(product.categoryId) : "",
-        currentQuantity: quantity,
+        quantity: currentQuantity,
+        currentQuantity,
+        availableQty: currentQuantity,
+        reservedQty,
+        damagedQty,
+        lostQty,
         soldQuantity,
-        initialQuantity: quantity + soldQuantity,
+        initialQuantity: quantityOnHand + soldQuantity,
         orderRefs: Array.isArray(sales?.orderRefs)
           ? sales.orderRefs.map((entry) => ({
               orderId: normalizeString(entry?.orderId),
@@ -574,12 +585,32 @@ export async function updateInventory(req, res) {
       return res.status(400).json({ error: "Inventory id must be a valid ObjectId" });
     }
 
+    const existing = await Inventory.findById(id).lean();
+    if (!existing) return res.status(404).json({ error: "Inventory not found" });
+    const variant = existing?.variantId ? await Variant.findById(existing.variantId) : null;
+    const existingVariantEntry = Array.isArray(variant?.stock)
+      ? variant.stock.find((entry) => normalizeString(entry?.stockKey).toUpperCase() === normalizeString(existing.stockKey).toUpperCase())
+      : null;
+    const projectionMismatchBefore = projectionEntryDiffers(existing, existingVariantEntry);
+
     const body = req.body || {};
     const patch = {
       updatedBy: req.user?._id || null,
     };
 
-    if (body.quantity !== undefined) patch.quantity = Math.max(0, asNumber(body.quantity, 0));
+    if (body.quantity !== undefined) {
+      const nextAvailableQty = Math.max(0, asNumber(body.quantity, 0));
+      patch.quantity = nextAvailableQty;
+      patch.availableQty = nextAvailableQty;
+    }
+    if (body.availableQty !== undefined) {
+      const nextAvailableQty = Math.max(0, asNumber(body.availableQty, 0));
+      patch.quantity = nextAvailableQty;
+      patch.availableQty = nextAvailableQty;
+    }
+    if (body.reservedQty !== undefined) patch.reservedQty = Math.max(0, asNumber(body.reservedQty, 0));
+    if (body.damagedQty !== undefined) patch.damagedQty = Math.max(0, asNumber(body.damagedQty, 0));
+    if (body.lostQty !== undefined) patch.lostQty = Math.max(0, asNumber(body.lostQty, 0));
     if (body.reorderLevel !== undefined) patch.reorderLevel = Math.max(0, asNumber(body.reorderLevel, 0));
     if (body.sizeLabel !== undefined) patch.sizeLabel = normalizeString(body.sizeLabel);
 
@@ -588,6 +619,60 @@ export async function updateInventory(req, res) {
       runValidators: true,
     });
     if (!doc) return res.status(404).json({ error: "Inventory not found" });
+
+    if (variant) {
+      const stockKey = normalizeString(doc.stockKey).toUpperCase();
+      const nextProjection = normalizeInventoryProjectionEntry(doc);
+      const stockRows = Array.isArray(variant.stock) ? [...variant.stock] : [];
+      const stockIndex = stockRows.findIndex((entry) => normalizeString(entry?.stockKey).toUpperCase() === stockKey);
+      if (stockIndex >= 0) stockRows[stockIndex] = nextProjection;
+      else stockRows.push(nextProjection);
+      variant.stock = stockRows;
+      await variant.save();
+    }
+
+    if (projectionMismatchBefore) {
+      await recordAuditEvent({
+        req,
+        action: "INVENTORY_RECONCILIATION_MISMATCH",
+        entityType: "INVENTORY",
+        entityId: String(doc._id),
+        entityDisplayId: String(doc.stockKey || doc._id),
+        before: {
+          inventory: existing,
+          variantProjection: existingVariantEntry || null,
+        },
+        after: {
+          inventory: doc.toObject ? doc.toObject() : doc,
+          variantProjection: normalizeInventoryProjectionEntry(doc),
+        },
+        metadata: {
+          productId: String(doc.productId || ""),
+          variantId: String(doc.variantId || ""),
+        },
+      });
+    }
+
+    await recordAuditEvent({
+      req,
+      action: "INVENTORY_UPDATED",
+      entityType: "INVENTORY",
+      entityId: String(doc._id),
+      entityDisplayId: String(doc.stockKey || doc._id),
+      before: existing,
+      after: doc.toObject ? doc.toObject() : doc,
+      metadata: {
+        productId: String(doc.productId || ""),
+        variantId: String(doc.variantId || ""),
+        deltas: {
+          quantity: asNumber(doc.quantity, 0) - asNumber(existing.quantity, 0),
+          availableQty: asNumber(doc.availableQty, 0) - asNumber(existing.availableQty, 0),
+          reservedQty: asNumber(doc.reservedQty, 0) - asNumber(existing.reservedQty, 0),
+          damagedQty: asNumber(doc.damagedQty, 0) - asNumber(existing.damagedQty, 0),
+          lostQty: asNumber(doc.lostQty, 0) - asNumber(existing.lostQty, 0),
+        },
+      },
+    });
 
     return res.json(doc);
   } catch (err) {

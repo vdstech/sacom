@@ -4,7 +4,6 @@ import ReturnExchangeCase from "./customer-orders.return-exchange-case.model.js"
 import {
   cancelCustomerOrderAndRestock,
   cancelCustomerOrderItemAndRestock,
-  createCustomerOrderFromCart,
   requestCustomerOrderItemExchange,
   requestCustomerOrderItemReturn,
 } from "./customer-orders.service.js";
@@ -37,6 +36,12 @@ async function buildReturnPolicyMap(orders) {
     .lean();
 
   return new Map(products.map((product) => [String(product._id), product.returnPolicy || null]));
+}
+
+function excludeFailedPaymentOrders(orders = []) {
+  return (Array.isArray(orders) ? orders : []).filter(
+    (order) => normalizePaymentStatus(order?.paymentStatus, "pending") !== "payment_failed"
+  );
 }
 
 async function buildReturnExchangeCaseMap(orders) {
@@ -101,7 +106,7 @@ export async function listOrders(req, res) {
   const orders = await CustomerOrder.find({ customer: req.customerAuth.customerId })
     .sort({ placedAt: -1, createdAt: -1 })
     .lean();
-  const mappedOrders = orders.map(mapOrder);
+  const mappedOrders = excludeFailedPaymentOrders(orders).map(mapOrder);
   const returnPolicyMap = await buildReturnPolicyMap(mappedOrders);
   const caseMap = await buildReturnExchangeCaseMap(mappedOrders);
   return res.json({ orders: mappedOrders.map((order) => decorateMappedOrder(order, returnPolicyMap, caseMap)) });
@@ -110,6 +115,9 @@ export async function listOrders(req, res) {
 export async function getOrder(req, res) {
   const order = await CustomerOrder.findOne({ _id: req.params.id, customer: req.customerAuth.customerId }).lean();
   if (!order) return res.status(404).json({ error: "Order not found" });
+  if (normalizePaymentStatus(order?.paymentStatus, "pending") === "payment_failed") {
+    return res.status(404).json({ error: "Order not found" });
+  }
   const mappedOrder = mapOrder(order);
   const returnPolicyMap = await buildReturnPolicyMap([mappedOrder]);
   const caseMap = await buildReturnExchangeCaseMap([mappedOrder]);
@@ -117,25 +125,9 @@ export async function getOrder(req, res) {
 }
 
 export async function createOrder(req, res) {
-  try {
-    const paymentStatus = normalizePaymentStatus(req.body?.paymentStatus, "paid");
-    if (!["paid", "payment_failed"].includes(paymentStatus)) {
-      return res.status(400).json({ error: "paymentStatus must be paid or payment_failed" });
-    }
-
-    const order = await createCustomerOrderFromCart({
-      customerId: req.customerAuth.customerId,
-      cartToken: req.body?.cartToken,
-      addressId: req.body?.addressId,
-      paymentStatus,
-    });
-    const mappedOrder = mapOrder(order);
-    const returnPolicyMap = await buildReturnPolicyMap([mappedOrder]);
-    const caseMap = await buildReturnExchangeCaseMap([mappedOrder]);
-    return res.status(201).json({ order: decorateMappedOrder(mappedOrder, returnPolicyMap, caseMap) });
-  } catch (err) {
-    return res.status(err.statusCode || 500).json({ error: err.message || "Unable to create order" });
-  }
+  return res.status(410).json({
+    error: "Direct order creation is no longer supported. Create a checkout session and confirm payment instead.",
+  });
 }
 
 export async function listCoupons(req, res) {

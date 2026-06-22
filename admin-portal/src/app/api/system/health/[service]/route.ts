@@ -6,10 +6,10 @@ export const runtime = "nodejs";
 type Context = { params: { service: string } };
 
 const HEALTH_TARGETS: Record<string, string> = {
-  gateway: process.env.GATEWAY_INTERNAL_URL || "https://localhost:4000",
-  auth: process.env.AUTH_INTERNAL_URL || "https://localhost:4443",
-  catalog: process.env.CATALOG_INTERNAL_URL || "https://localhost:4444",
-  product: process.env.PRODUCT_INTERNAL_URL || "https://localhost:4445",
+  gateway: process.env.GATEWAY_INTERNAL_URL || "http://localhost:4000",
+  auth: process.env.AUTH_INTERNAL_URL || "http://localhost:4443",
+  catalog: process.env.CATALOG_INTERNAL_URL || "http://localhost:4444",
+  product: process.env.PRODUCT_INTERNAL_URL || "http://localhost:4445",
 };
 
 function requestJson(urlString: string) {

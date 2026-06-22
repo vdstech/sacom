@@ -5,11 +5,12 @@ import CouponRedemption from "./customer-orders.coupon-redemption.model.js";
 import CouponReservation from "./customer-orders.coupon-reservation.model.js";
 import ExchangeCoupon from "./customer-orders.exchange-coupon.model.js";
 import IdempotencyRecord from "./customer-orders.idempotency-record.model.js";
-import AuditLog from "./customer-orders.audit-log.model.js";
+import { recordAuditEvent } from "../audit/audit.service.js";
 import {
   finalizePreparedCustomerOrder,
   prepareCustomerOrderFromCart,
 } from "./customer-orders.service.js";
+import { applyPricingRules } from "./customer-orders.pricing.js";
 
 const CHECKOUT_SESSION_TTL_MS = 7 * 60 * 1000;
 
@@ -55,33 +56,86 @@ function shapeCoupon(coupon) {
 }
 
 function computeCouponAmounts(coupon, prepared) {
-  const cartTotal = Math.max(0, asNumber(prepared?.grandTotal, 0));
+  const merchandiseTotal = Math.max(
+    0,
+    asNumber(prepared?.discountedMerchandiseTotalBeforeCoupon, prepared?.discountedMerchandiseTotal)
+  );
   const couponValue = Math.max(0, asNumber(coupon?.valueAmount, 0));
-  const appliedAmount = Math.min(cartTotal, couponValue);
+  const appliedAmount = Math.min(merchandiseTotal, couponValue);
+  const pricing = applyPricingRules({
+    items: prepared?.items || [],
+    couponAppliedAmount: appliedAmount,
+    currency: normalizeString(prepared?.currency, "INR") || "INR",
+    couponCode: normalizeString(coupon?.code),
+  });
   return {
     appliedAmount,
-    payableAmount: Math.max(0, cartTotal - appliedAmount),
+    payableAmount: Math.max(0, asNumber(pricing.payableTotal, 0)),
     forfeitureAmount: Math.max(0, couponValue - appliedAmount),
+    pricing,
   };
 }
 
-function shapeCheckoutSession(session, prepared, coupon = null) {
-  const subtotal = Math.max(0, asNumber(prepared?.grandTotal, 0));
-  const couponAmounts = coupon ? computeCouponAmounts(coupon, prepared) : {
+function buildSessionPricing(prepared, coupon = null) {
+  if (coupon) {
+    return computeCouponAmounts(coupon, prepared);
+  }
+
+  const pricing = applyPricingRules({
+    items: prepared?.items || [],
+    couponAppliedAmount: 0,
+    currency: normalizeString(prepared?.currency, "INR") || "INR",
+  });
+  return {
     appliedAmount: 0,
-    payableAmount: subtotal,
+    payableAmount: Math.max(0, asNumber(pricing.payableTotal, 0)),
     forfeitureAmount: 0,
+    pricing,
   };
+}
+
+async function persistPreparedSession(session, prepared, coupon = null) {
+  const computed = buildSessionPricing(prepared, coupon);
+  session.currency = normalizeString(session.currency || prepared?.currency, "INR");
+  session.subtotal = Math.max(0, asNumber(computed.pricing?.subtotal, 0));
+  session.discountTotal = Math.max(0, asNumber(computed.pricing?.discountTotal, 0));
+  session.taxableBaseTotal = Math.max(0, asNumber(computed.pricing?.taxableBaseTotal, 0));
+  session.includedTaxTotal = Math.max(0, asNumber(computed.pricing?.includedTaxTotal, 0));
+  session.shippingTotal = Math.max(0, asNumber(computed.pricing?.shippingTotal, 0));
+  session.couponAppliedAmount = Math.max(0, asNumber(computed.appliedAmount, 0));
+  session.payableAmount = Math.max(0, asNumber(computed.payableAmount, 0));
+  session.forfeitureAmount = Math.max(0, asNumber(computed.forfeitureAmount, 0));
+  session.pricingSnapshot = computed.pricing?.snapshot || null;
+  await session.save();
+  return computed;
+}
+
+function shapeCheckoutSession(session, prepared, coupon = null) {
+  const computed = buildSessionPricing(prepared, coupon);
+  const subtotal = Math.max(0, asNumber(computed.pricing?.subtotal, 0));
+  const shippingTotal = Math.max(0, asNumber(computed.pricing?.shippingTotal, 0));
+  const taxTotal = Math.max(0, asNumber(computed.pricing?.taxTotal, 0));
   return {
     id: String(session._id),
     cartToken: normalizeString(session.cartToken),
     status: normalizeString(session.status),
+    paymentStatus: normalizeString(session.paymentStatus, "pending"),
     currency: normalizeString(session.currency || prepared?.currency, "INR"),
     subtotal,
-    couponAppliedAmount: couponAmounts.appliedAmount,
-    payableAmount: couponAmounts.payableAmount,
-    forfeitureAmount: couponAmounts.forfeitureAmount,
+    discountTotal: Math.max(0, asNumber(computed.pricing?.discountTotal, 0)),
+    taxableBaseTotal: Math.max(0, asNumber(computed.pricing?.taxableBaseTotal, 0)),
+    includedTaxTotal: Math.max(0, asNumber(computed.pricing?.includedTaxTotal, 0)),
+    shippingTotal,
+    taxTotal,
+    couponAppliedAmount: computed.appliedAmount,
+    payableAmount: computed.payableAmount,
+    forfeitureAmount: computed.forfeitureAmount,
     expiresAt: session.expiresAt || null,
+    lastAttemptedAt: session.lastAttemptedAt || null,
+    failedAt: session.failedAt || null,
+    failureCode: normalizeString(session.failureCode),
+    failureReason: normalizeString(session.failureReason),
+    pricingSnapshot: computed.pricing?.snapshot || prepared?.pricingSnapshot || null,
     coupon: shapeCoupon(coupon),
   };
 }
@@ -94,14 +148,18 @@ function buildAuditLog({
   oldStatus = "",
   metadata = {},
 }) {
-  return AuditLog.create({
+  return recordAuditEvent({
     action,
-    newStatus,
-    oldStatus,
-    orderId: mongoose.isValidObjectId(orderId) ? orderId : null,
-    orderItemId,
-    referenceId: orderItemId || String(orderId || ""),
-    metadata,
+    entityType: orderItemId ? "ORDER_ITEM" : "ORDER",
+    entityId: orderItemId || String(orderId || ""),
+    entityDisplayId: String(orderId || orderItemId || ""),
+    before: oldStatus ? { status: oldStatus } : undefined,
+    after: newStatus ? { status: newStatus } : undefined,
+    metadata: {
+      orderId: mongoose.isValidObjectId(orderId) ? String(orderId) : "",
+      orderItemId,
+      ...(metadata || {}),
+    },
   });
 }
 
@@ -276,20 +334,29 @@ async function validateCouponForApply({ coupon, customerId, sessionId }) {
 }
 
 async function ensureSessionPrepared(session) {
-  if (normalizeString(session.status) !== "ACTIVE") {
+  if (!["ACTIVE", "PAYMENT_FAILED"].includes(normalizeString(session.status))) {
     throw createHttpError("Checkout session is no longer active", 409);
   }
   if (isExpired(session.expiresAt)) {
+    const previousStatus = normalizeString(session.status, "ACTIVE");
     session.status = "EXPIRED";
     session.expiredAt = new Date();
     await session.save();
     await releaseReservation({ session, reason: "EXPIRED" });
+    await recordAuditEvent({
+      action: "CHECKOUT_SESSION_EXPIRED",
+      entityType: "CHECKOUT_SESSION",
+      entityId: String(session._id),
+      entityDisplayId: String(session._id),
+      before: { status: previousStatus },
+      after: { status: "EXPIRED" },
+      metadata: { cartToken: normalizeString(session.cartToken) },
+    });
     throw createHttpError("Checkout session has expired", 409);
   }
 
   const { cart, prepared } = await prepareCustomerOrderFromCart({ cartToken: session.cartToken });
-  session.currency = "INR";
-  session.subtotal = Math.max(0, asNumber(prepared.grandTotal, 0));
+  session.paymentStatus = normalizeString(session.paymentStatus, "pending") || "pending";
   session.expiresAt = buildSessionExpiry();
   await session.save();
   return { cart, prepared };
@@ -323,6 +390,7 @@ export async function createCheckoutSession({ customerId, cartToken }) {
     try {
       const { prepared } = await ensureSessionPrepared(existing);
       const coupon = existing.couponId ? await ExchangeCoupon.findById(existing.couponId) : null;
+      await persistPreparedSession(existing, prepared, coupon);
       return { session: shapeCheckoutSession(existing, prepared, coupon) };
     } catch (error) {
       if ((error?.statusCode || 0) !== 409 || normalizeString(error?.message) !== "Checkout session has expired") {
@@ -336,10 +404,25 @@ export async function createCheckoutSession({ customerId, cartToken }) {
     customerId,
     cartToken: normalizeString(cartToken),
     status: "ACTIVE",
+    paymentStatus: "pending",
     currency: "INR",
-    subtotal: Math.max(0, asNumber(prepared.grandTotal, 0)),
-    payableAmount: Math.max(0, asNumber(prepared.grandTotal, 0)),
     expiresAt: buildSessionExpiry(),
+  });
+  const computed = await persistPreparedSession(session, prepared, null);
+  await recordAuditEvent({
+    action: "CHECKOUT_SESSION_CREATED",
+    entityType: "CHECKOUT_SESSION",
+    entityId: String(session._id),
+    entityDisplayId: String(session._id),
+    after: { status: session.status, paymentStatus: session.paymentStatus },
+    metadata: {
+      cartToken: normalizeString(session.cartToken),
+      payableAmount: Math.max(0, asNumber(computed.payableAmount, 0)),
+      pricingRuleVersion: computed.pricing?.pricingVersion,
+      taxMode: computed.pricing?.snapshot?.taxMode,
+      includedTaxTotal: computed.pricing?.includedTaxTotal || 0,
+      shippingRule: computed.pricing?.snapshot?.shippingRule || null,
+    },
   });
   return { session: shapeCheckoutSession(session, prepared, null) };
 }
@@ -348,6 +431,7 @@ export async function getCheckoutSession({ customerId, sessionId }) {
   const session = await loadCheckoutSessionForCustomer(customerId, sessionId);
   const { prepared } = await ensureSessionPrepared(session);
   const coupon = session.couponId ? await ExchangeCoupon.findById(session.couponId) : null;
+  await persistPreparedSession(session, prepared, coupon);
   return { session: shapeCheckoutSession(session, prepared, coupon) };
 }
 
@@ -360,7 +444,7 @@ export async function applyCheckoutCoupon({ customerId, sessionId, couponCode, i
     operation: async () => {
       const session = await loadCheckoutSessionForCustomer(customerId, sessionId);
       const { prepared } = await ensureSessionPrepared(session);
-      if (Math.max(0, asNumber(prepared.grandTotal, 0)) <= 0) {
+      if (Math.max(0, asNumber(prepared?.discountedMerchandiseTotalBeforeCoupon, 0)) <= 0) {
         throw createHttpError("Coupon cannot be applied to an empty cart", 409);
       }
 
@@ -400,10 +484,7 @@ export async function applyCheckoutCoupon({ customerId, sessionId, couponCode, i
       session.couponId = coupon._id;
       session.reservationId = reservation._id;
       session.couponCode = normalizeString(coupon.code);
-      session.couponAppliedAmount = couponAmounts.appliedAmount;
-      session.payableAmount = couponAmounts.payableAmount;
-      session.forfeitureAmount = couponAmounts.forfeitureAmount;
-      await session.save();
+      await persistPreparedSession(session, prepared, coupon);
 
       return { session: shapeCheckoutSession(session, prepared, coupon) };
     },
@@ -414,15 +495,27 @@ export async function removeCheckoutCoupon({ customerId, sessionId }) {
   const session = await loadCheckoutSessionForCustomer(customerId, sessionId);
   const { prepared } = await ensureSessionPrepared(session);
   await releaseReservation({ session, reason: "REMOVED" });
+  await persistPreparedSession(session, prepared, null);
   return { session: shapeCheckoutSession(session, prepared, null) };
 }
 
 export async function abandonCheckoutSession({ customerId, sessionId }) {
   const session = await loadCheckoutSessionForCustomer(customerId, sessionId);
   await releaseReservation({ session, reason: "ABANDONED" });
+  const previousStatus = normalizeString(session.status, "ACTIVE");
   session.status = "ABANDONED";
+  session.paymentStatus = "abandoned";
   session.abandonedAt = new Date();
   await session.save();
+  await recordAuditEvent({
+    action: "CHECKOUT_SESSION_ABANDONED",
+    entityType: "CHECKOUT_SESSION",
+    entityId: String(session._id),
+    entityDisplayId: String(session._id),
+    before: { status: previousStatus },
+    after: { status: session.status, paymentStatus: session.paymentStatus },
+    metadata: { cartToken: normalizeString(session.cartToken) },
+  });
   return { session: { id: String(session._id), status: session.status } };
 }
 
@@ -446,6 +539,7 @@ export async function confirmCheckoutSession({
       let reservation = null;
       let couponSnapshot = null;
       const requestedPaymentStatus = normalizeString(paymentStatus, "paid").toLowerCase();
+      const previousStatus = normalizeString(session.status, "ACTIVE");
 
       if (session.couponId) {
         coupon = await ExchangeCoupon.findById(session.couponId);
@@ -474,18 +568,40 @@ export async function confirmCheckoutSession({
             appliedAmount: couponAmounts.appliedAmount,
             forfeitedAmount: couponAmounts.forfeitureAmount,
           };
-          session.couponAppliedAmount = couponAmounts.appliedAmount;
-          session.payableAmount = couponAmounts.payableAmount;
-          session.forfeitureAmount = couponAmounts.forfeitureAmount;
-          await session.save();
+          await persistPreparedSession(session, prepared, coupon);
         }
       }
+
+      if (!coupon) {
+        await persistPreparedSession(session, prepared, null);
+      }
+      session.lastAttemptedAt = new Date();
 
       if (requestedPaymentStatus === "payment_failed") {
         if (session.couponId || session.reservationId) {
           await releaseReservation({ session, reservation, coupon, reason: "PAYMENT_FAILED" });
+          await persistPreparedSession(session, prepared, null);
         }
-        throw createHttpError("Payment failed", 409);
+        session.status = "PAYMENT_FAILED";
+        session.paymentStatus = "payment_failed";
+        session.failedAt = new Date();
+        session.failureCode = "PAYMENT_DECLINED";
+        session.failureReason = "Payment was not completed";
+        await session.save();
+        await recordAuditEvent({
+          action: "CHECKOUT_SESSION_FAILED",
+          entityType: "CHECKOUT_SESSION",
+          entityId: String(session._id),
+          entityDisplayId: String(session._id),
+          before: { status: previousStatus, paymentStatus: "pending" },
+          after: { status: session.status, paymentStatus: session.paymentStatus },
+          metadata: {
+            cartToken: normalizeString(session.cartToken),
+            failureCode: session.failureCode,
+            failureReason: session.failureReason,
+          },
+        });
+        throw createHttpError("Payment failed. No order was created.", 409);
       }
 
       const order = await finalizePreparedCustomerOrder({
@@ -523,7 +639,7 @@ export async function confirmCheckoutSession({
         await buildAuditLog({
           orderId: order._id,
           orderItemId: normalizeString(coupon.orderItemId),
-          action: "EXCHANGE_COUPON_CONSUMED",
+          action: "CASH_COUPON_CONSUMED",
           newStatus: "USED",
           oldStatus: "RESERVED",
           metadata: {
@@ -536,8 +652,25 @@ export async function confirmCheckoutSession({
       }
 
       session.status = "COMPLETED";
+      session.paymentStatus = "paid";
       session.completedAt = new Date();
+      session.failedAt = null;
+      session.failureCode = "";
+      session.failureReason = "";
       await session.save();
+      await recordAuditEvent({
+        action: "CHECKOUT_SESSION_COMPLETED",
+        entityType: "CHECKOUT_SESSION",
+        entityId: String(session._id),
+        entityDisplayId: String(session._id),
+        before: { status: previousStatus, paymentStatus: "pending" },
+        after: { status: session.status, paymentStatus: session.paymentStatus },
+        metadata: {
+          cartToken: normalizeString(session.cartToken),
+          orderId: String(order._id || ""),
+          orderDisplayId: normalizeString(order.displayId || order.paymentReference),
+        },
+      });
 
       return {
         order,
@@ -556,9 +689,19 @@ export async function expireCheckoutSessionsAndReservations({ now = new Date() }
 
   for (const session of sessions) {
     await releaseReservation({ session, reason: "EXPIRED" });
+    const previousStatus = normalizeString(session.status, "ACTIVE");
     session.status = "EXPIRED";
     session.expiredAt = now;
     await session.save();
+    await recordAuditEvent({
+      action: "CHECKOUT_SESSION_EXPIRED",
+      entityType: "CHECKOUT_SESSION",
+      entityId: String(session._id),
+      entityDisplayId: String(session._id),
+      before: { status: previousStatus },
+      after: { status: session.status },
+      metadata: { cartToken: normalizeString(session.cartToken) },
+    });
     expiredSessions += 1;
   }
 

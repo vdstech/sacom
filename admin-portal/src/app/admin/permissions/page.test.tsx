@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import PermissionsPage from "./page";
 
@@ -19,8 +19,19 @@ vi.mock("@/components/ProtectedPage", () => ({
 }));
 
 vi.mock("@/components/DataTable", () => ({
-  DataTable: ({ rows }: { rows: unknown[][] }) => (
-    <div data-testid="permission-table">{rows.length}</div>
+  DataTable: ({ headers, rows }: { headers: string[]; rows: React.ReactNode[][] }) => (
+    <table>
+      <thead>
+        <tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr>
+      </thead>
+      <tbody>
+        {rows.map((row, rowIndex) => (
+          <tr key={rowIndex}>
+            {row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`}>{cell}</td>)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   ),
 }));
 
@@ -54,5 +65,55 @@ describe("PermissionsPage", () => {
 
     await waitFor(() => expect(apiRequestMock).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "Create" })).toBeInTheDocument();
+  });
+
+  it("shows system protection labels for system permissions", async () => {
+    apiRequestMock.mockResolvedValue({
+      permissions: [
+        {
+          _id: "perm-1",
+          code: "order:return",
+          description: "Manage issue cases",
+          isSystemPermission: true,
+        },
+      ],
+    });
+    useAuthMock.mockReturnValue({
+      accessToken: "token",
+      refreshAccessToken: vi.fn(),
+      me: { systemLevel: "SUPER", user: { systemLevel: "SUPER" } },
+    });
+
+    render(<PermissionsPage />);
+
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalled());
+    expect(screen.getByText("System protected")).toBeInTheDocument();
+    expect(screen.getByText("System permission code is locked.")).toBeInTheDocument();
+  });
+
+  it("shows backend rejection messages for unsafe deletes", async () => {
+    apiRequestMock
+      .mockResolvedValueOnce({
+        permissions: [
+          {
+            _id: "perm-1",
+            code: "order:return",
+            description: "Manage issue cases",
+            isSystemPermission: true,
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error("System permissions cannot be deleted"));
+    useAuthMock.mockReturnValue({
+      accessToken: "token",
+      refreshAccessToken: vi.fn(),
+      me: { systemLevel: "SUPER", user: { systemLevel: "SUPER" } },
+    });
+
+    render(<PermissionsPage />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.getByText("System permissions cannot be deleted")).toBeInTheDocument());
   });
 });

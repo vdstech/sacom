@@ -21,11 +21,20 @@ async function ensureSingleRole(name) {
   return roles[0] || null;
 }
 
+export const ROLE_PERMISSION_CODES = {
+  SUPER_ADMIN: ACTIVE_PERMISSION_CODES,
+  ADMIN: ACTIVE_PERMISSION_CODES,
+  ORDER_ADMIN: ["order:read", "order:admin", "order:dashboard:fulfillment:read", "order:dashboard:escalations:read"],
+  PROCESSING_MANAGER: ["order:read", "order:processing"],
+  PACKAGING_MANAGER: ["order:read", "order:packaging"],
+  SHIPPING_OPERATOR: ["order:read", "order:shipping"],
+  CANCELLATION_MANAGER: ["order:read", "order:cancellation"],
+  RETURN_EXCHANGE_HANDLER: ["order:read", "order:return"],
+  INVENTORY_MANAGER: ["order:read", "inventory:read", "product:inventory:update"],
+};
+
 export async function seedRoleUsers() {
   const permissions = await Permission.find().select("_id code").lean();
-  const activePermIds = permissions
-    .filter((permission) => ACTIVE_PERMISSION_CODES.includes(permission.code))
-    .map((permission) => permission._id);
   const getPermIds = (codes) => permissions
     .filter((permission) => codes.includes(permission.code))
     .map((permission) => permission._id);
@@ -41,7 +50,7 @@ export async function seedRoleUsers() {
     {
       name: "SUPER_ADMIN",
       description: "System super administrator",
-      permissions: activePermIds,
+      permissions: getPermIds(ROLE_PERMISSION_CODES.SUPER_ADMIN),
       visibleMenus: ADMIN_MENU_IDS,
       visibleMenusConfigured: false,
       isSystemRole: true,
@@ -51,7 +60,7 @@ export async function seedRoleUsers() {
     {
       name: "ADMIN",
       description: "System administrator",
-      permissions: activePermIds,
+      permissions: getPermIds(ROLE_PERMISSION_CODES.ADMIN),
       visibleMenus: ADMIN_MENU_IDS,
       visibleMenusConfigured: false,
       isSystemRole: true,
@@ -61,7 +70,7 @@ export async function seedRoleUsers() {
     {
       name: "ORDER_ADMIN",
       description: "Supervisory order administrator for pre-shipment cancellation and oversight",
-      permissions: getPermIds(["order:read", "order:admin"]),
+      permissions: getPermIds(ROLE_PERMISSION_CODES.ORDER_ADMIN),
       visibleMenus: orderAdminMenus,
       visibleMenusConfigured: true,
       isSystemRole: false,
@@ -71,7 +80,7 @@ export async function seedRoleUsers() {
     {
       name: "PROCESSING_MANAGER",
       description: "Picks reserved items and hands them to packaging",
-      permissions: getPermIds(["order:read", "order:processing"]),
+      permissions: getPermIds(ROLE_PERMISSION_CODES.PROCESSING_MANAGER),
       visibleMenus: processingManagerMenus,
       visibleMenusConfigured: true,
       isSystemRole: false,
@@ -81,7 +90,7 @@ export async function seedRoleUsers() {
     {
       name: "PACKAGING_MANAGER",
       description: "Receives, packs, labels, and hands items to shipping",
-      permissions: getPermIds(["order:read", "order:packaging"]),
+      permissions: getPermIds(ROLE_PERMISSION_CODES.PACKAGING_MANAGER),
       visibleMenus: ["packagingManager"],
       visibleMenusConfigured: true,
       isSystemRole: false,
@@ -91,7 +100,7 @@ export async function seedRoleUsers() {
     {
       name: "SHIPPING_OPERATOR",
       description: "Receives packed items, assigns courier and tracking, and ships them",
-      permissions: getPermIds(["order:read", "order:shipping"]),
+      permissions: getPermIds(ROLE_PERMISSION_CODES.SHIPPING_OPERATOR),
       visibleMenus: ["shippingOperator"],
       visibleMenusConfigured: true,
       isSystemRole: false,
@@ -101,7 +110,7 @@ export async function seedRoleUsers() {
     {
       name: "CANCELLATION_MANAGER",
       description: "Receives cancelled items and decides restock, damaged, or lost outcomes",
-      permissions: getPermIds(["order:read", "order:cancellation"]),
+      permissions: getPermIds(ROLE_PERMISSION_CODES.CANCELLATION_MANAGER),
       visibleMenus: ["cancellationManager"],
       visibleMenusConfigured: true,
       isSystemRole: false,
@@ -111,7 +120,7 @@ export async function seedRoleUsers() {
     {
       name: "RETURN_EXCHANGE_HANDLER",
       description: "Investigates customer return and exchange cases and updates their lifecycle",
-      permissions: getPermIds(["order:read", "order:return"]),
+      permissions: getPermIds(ROLE_PERMISSION_CODES.RETURN_EXCHANGE_HANDLER),
       visibleMenus: ["returnExchangeManager"],
       visibleMenusConfigured: true,
       isSystemRole: false,
@@ -121,28 +130,8 @@ export async function seedRoleUsers() {
     {
       name: "INVENTORY_MANAGER",
       description: "Restocks returned and cancelled items in inventory",
-      permissions: getPermIds(["order:read", "inventory:read", "product:inventory:update"]),
+      permissions: getPermIds(ROLE_PERMISSION_CODES.INVENTORY_MANAGER),
       visibleMenus: inventoryManagerMenus,
-      visibleMenusConfigured: true,
-      isSystemRole: false,
-      systemLevel: "NONE",
-      disabled: false
-    },
-    {
-      name: "ORDER_OPERATIONS",
-      description: "Legacy operations role covering all order lanes",
-      permissions: getPermIds([
-        "order:read",
-        "order:admin",
-        "order:processing",
-        "order:packaging",
-        "order:shipping",
-        "order:cancellation",
-        "order:return",
-        "inventory:read",
-        "product:inventory:update",
-      ]),
-      visibleMenus: [...orderAdminMenus, "processingManager", "packagingManager", "shippingOperator", "cancellationManager"],
       visibleMenusConfigured: true,
       isSystemRole: false,
       systemLevel: "NONE",
@@ -164,7 +153,6 @@ export async function seedRoleUsers() {
     await ensureSingleRole("CANCELLATION_MANAGER"),
     await ensureSingleRole("RETURN_EXCHANGE_HANDLER"),
     await ensureSingleRole("INVENTORY_MANAGER"),
-    await ensureSingleRole("ORDER_OPERATIONS"),
   ];
   if (!superRole || !adminRole || requiredRoles.some((role) => !role)) {
     throw new Error("Role seeding failed: one or more system roles were not created.");

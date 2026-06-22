@@ -1,4 +1,4 @@
-import { StoreRequestError } from "@/lib/storeApi";
+import { StoreRequestError, type ProductReview } from "@/lib/storeApi";
 import { STOREFRONT_STORAGE_KEYS } from "@/lib/constants";
 
 const CUSTOMER_ACCESS_TOKEN_STORAGE_KEY = STOREFRONT_STORAGE_KEYS.customerAccessToken;
@@ -101,8 +101,11 @@ export type CustomerOrderItem = {
   promoDiscountValue?: number;
   promoDiscountLabel?: string;
   promoDiscountAmount?: number;
+  taxRate?: number;
+  priceIncludesTax?: boolean;
   finalUnitPrice?: number;
   lineSubtotal?: number;
+  lineTaxableBaseTotal?: number;
   lineTaxTotal?: number;
   lineShippingTotal?: number;
   lineDiscountTotal?: number;
@@ -124,6 +127,8 @@ export type CustomerOrderAddressSnapshot = {
 
 export type CustomerOrder = {
   id: string;
+  displayId?: string;
+  displayReference?: string;
   placedAt?: string;
   status: string;
   paymentStatus?: string;
@@ -132,11 +137,52 @@ export type CustomerOrder = {
   subtotal?: number;
   discountTotal?: number;
   shippingTotal?: number;
+  taxableBaseTotal?: number;
   taxTotal?: number;
   grandTotal?: number;
   total: number;
   currency?: string;
   pricingVersion?: number;
+  pricingSnapshot?: {
+    version?: number;
+    currency?: string;
+    pricingRuleVersion?: number;
+    priceIncludesTax?: boolean;
+    taxMode?: string;
+    subtotalBeforeCoupon?: number;
+    catalogDiscountTotal?: number;
+    couponDiscountTotal?: number;
+    discountTotal?: number;
+    discountedMerchandiseTotalBeforeCoupon?: number;
+    discountedMerchandiseTotal?: number;
+    taxableBaseTotal?: number;
+    shippingTotal?: number;
+    taxTotal?: number;
+    includedTaxTotal?: number;
+    shippingTaxTotal?: number;
+    grandTotal?: number;
+    payableTotal?: number;
+    allocationMode?: string;
+    taxRatesUsed?: number[];
+    shippingRule?: {
+      key?: string;
+      label?: string;
+      amount?: number;
+      standardCharge?: number;
+      freeThreshold?: number;
+      eligibleSubtotal?: number;
+      shippingTaxMode?: string;
+      shippingTaxTotal?: number;
+    };
+    taxRule?: {
+      key?: string;
+      label?: string;
+      defaultRate?: number;
+      ratePercent?: number;
+      amount?: number;
+      taxMode?: string;
+    };
+  } | null;
   couponCode?: string;
   couponDiscountTotal?: number;
   couponAppliedAmount?: number;
@@ -161,14 +207,27 @@ export type CustomerCheckoutSession = {
   id: string;
   cartToken: string;
   status: string;
+  paymentStatus?: string;
   currency?: string;
   subtotal: number;
+  discountTotal?: number;
+  taxableBaseTotal?: number;
+  includedTaxTotal?: number;
+  shippingTotal?: number;
+  taxTotal?: number;
   couponAppliedAmount: number;
   payableAmount: number;
   forfeitureAmount: number;
+  lastAttemptedAt?: string | null;
+  failedAt?: string | null;
+  failureCode?: string;
+  failureReason?: string;
+  pricingSnapshot?: CustomerOrder["pricingSnapshot"];
   expiresAt?: string | null;
   coupon?: CustomerCoupon | null;
 };
+
+export type CustomerProductReview = ProductReview;
 
 function getBaseUrl() {
   return "/api/proxy";
@@ -321,14 +380,6 @@ export async function fetchCustomerOrders(token: string) {
   return requestCustomer<{ orders: CustomerOrder[] }>("/api/customer/orders", undefined, token);
 }
 
-export async function createCustomerOrder(token: string, payload: { cartToken: string; addressId: string; paymentStatus?: "paid" | "payment_failed" }) {
-  return requestCustomer<{ order: CustomerOrder }>(
-    "/api/customer/orders",
-    { method: "POST", body: JSON.stringify(payload) },
-    token
-  );
-}
-
 export async function fetchCustomerCoupons(token: string) {
   return requestCustomer<{ coupons: CustomerCoupon[] }>("/api/customer/orders/coupons", undefined, token);
 }
@@ -438,6 +489,26 @@ export async function requestCustomerOrderItemExchange(
 ) {
   return requestCustomer<{ order: CustomerOrder }>(
     `/api/customer/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/exchange`,
+    { method: "POST", body: JSON.stringify(payload) },
+    token
+  );
+}
+
+export async function fetchMyProductReview(token: string, productId: string) {
+  return requestCustomer<{ review: CustomerProductReview | null }>(
+    `/products/${encodeURIComponent(productId)}/reviews/me`,
+    undefined,
+    token
+  );
+}
+
+export async function createProductReview(
+  token: string,
+  productId: string,
+  payload: { rating: number; title: string; comment: string; variantId?: string }
+) {
+  return requestCustomer<{ review: CustomerProductReview }>(
+    `/products/${encodeURIComponent(productId)}/reviews`,
     { method: "POST", body: JSON.stringify(payload) },
     token
   );

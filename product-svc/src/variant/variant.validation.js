@@ -112,6 +112,13 @@ function validateCommon(body, { requireStock }) {
     return "price must be a number";
   }
 
+  if (body.taxRate !== undefined) {
+    const taxRate = asNumber(body.taxRate);
+    if (taxRate === null || taxRate < 0 || taxRate >= 1) {
+      return "taxRate must be a number greater than or equal to 0 and less than 1";
+    }
+  }
+
   const discountError = validateDiscount(body.discount);
   if (discountError) return discountError;
 

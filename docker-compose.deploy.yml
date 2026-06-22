@@ -1,0 +1,163 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  auth-svc:
+    build:
+      context: ./auth-svc
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      ENABLE_TLS: "false"
+      TRUST_PROXY: "true"
+      PORT: 4443
+      MONGO_URI: mongodb://mongo:27017/commerce_db
+      ACCESS_TOKEN_SECRET: change_me
+      DEFAULT_PRODUCT_TAX_RATE: "0.05"
+      STANDARD_SHIPPING_CHARGE: "50"
+      FREE_SHIPPING_CART_VALUE: "999"
+      PRICING_RULE_VERSION: "2"
+      AUDIT_LOG_RETENTION_DAYS: ""
+      AUDIT_LOG_CLEANUP_INTERVAL_MS: "86400000"
+      SUPER_ADMIN_EMAIL: superadmin@sa.com
+      SUPER_ADMIN_PASSWORD: SuperAdmin@123
+    ports:
+      - "4443:4443"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4443/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  catalog-svc:
+    build:
+      context: ./catalog-svc
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      ENABLE_TLS: "false"
+      TRUST_PROXY: "true"
+      PORT: 4444
+      MONGO_URI: mongodb://mongo:27017/commerce_db
+      ACCESS_TOKEN_SECRET: change_me
+    ports:
+      - "4444:4444"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4444/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  product-svc:
+    build:
+      context: ./product-svc
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      ENABLE_TLS: "false"
+      TRUST_PROXY: "true"
+      PORT: 4445
+      MONGO_URI: mongodb://mongo:27017/commerce_db
+      ACCESS_TOKEN_SECRET: change_me
+      DEFAULT_PRODUCT_TAX_RATE: "0.05"
+      CATALOG_SVC_URL: http://catalog-svc:4444
+    ports:
+      - "4445:4445"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      catalog-svc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4445/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  gateway-svc:
+    build:
+      context: ./gateway-svc
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      ENABLE_TLS: "false"
+      TRUST_PROXY: "true"
+      PORT: 4000
+      AUTH_SVC_URL: http://auth-svc:4443
+      CATALOG_SVC_URL: http://catalog-svc:4444
+      PRODUCT_SVC_URL: http://product-svc:4445
+      ADMIN_PORTAL_URL: http://localhost:3000
+      STOREFRONT_URL: http://localhost:3001
+    ports:
+      - "4000:4000"
+    depends_on:
+      auth-svc:
+        condition: service_healthy
+      catalog-svc:
+        condition: service_healthy
+      product-svc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  admin-portal:
+    build:
+      context: ./admin-portal
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3000
+      NEXT_PUBLIC_STOREFRONT_URL: http://localhost:3001
+      GATEWAY_INTERNAL_URL: http://gateway-svc:4000
+    ports:
+      - "3000:3000"
+    depends_on:
+      gateway-svc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
+  storefront:
+    build:
+      context: ./siri-frontend-simple-proxy-v2
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_BACKEND_URL: http://gateway-svc:4000
+      GATEWAY_INTERNAL_URL: http://gateway-svc:4000
+    ports:
+      - "3001:3001"
+    depends_on:
+      gateway-svc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  mongo_data:
+

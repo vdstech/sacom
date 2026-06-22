@@ -10,8 +10,14 @@ import http from 'http'
 import cors from "cors";
 import categoryRoutes from "./categories/category.routes.js";
 import { validateRequiredEnv } from './config/validateRequiredEnv.js'
+import { requestContextMiddleware } from "../../shared/request-context.js";
 
 const app = express()
+const ENABLE_TLS = String(process.env.ENABLE_TLS || 'false').toLowerCase() === 'true';
+const corsOrigins = String(process.env.CORS_ORIGINS || "http://localhost:3000,https://localhost:3000,http://localhost:3001,https://localhost:3001")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 
 const TRUST_PROXY = String(process.env.TRUST_PROXY || 'false').toLowerCase() === 'true';
 // Trust proxy if you later put this behind nginx/ingress
@@ -27,17 +33,11 @@ app.use(helmet.hsts({
 
 const logger = pino({base: {service: 'catalog-svc'}})
 app.use(pinoHttp({logger}))
+app.use(requestContextMiddleware)
 app.use(express.json({limit: '200kb'}))
 
-app.use(cors({
-  origin: ["http://localhost:3000", "https://localhost:3000"],   // your Next dev origin
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true
-}));
-
 const corsOptions = {
-  origin: ["http://localhost:3000", "https://localhost:3000"], // add https://localhost:3000 if you run Next on https
+  origin: corsOrigins,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -58,21 +58,25 @@ app.get('/health', (req, res) => {
 
 ;(async () => {
     try {
-        validateRequiredEnv('catalog-svc', logger, ['ACCESS_TOKEN_SECRET', 'TLS_CERT_PATH', 'TLS_KEY_PATH'])
+        validateRequiredEnv('catalog-svc', logger, ['ACCESS_TOKEN_SECRET', ...(ENABLE_TLS ? ['TLS_CERT_PATH', 'TLS_KEY_PATH'] : [])])
         const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/commerce_db'
         await connectMongo(mongoUri)
         logger.info('Connected to MongoDB at ' + mongoUri)
         
-        // Start HTTPS server with TLS
         try {
-            const creds = getTlsOptions()
-            const httpsPort = process.env.HTTPS_PORT || 4444
-            https.createServer(creds, app).listen(httpsPort, () => {
-                logger.info(`Catalog Service running on port ${httpsPort} with TLS`)
-            })
+            const httpsPort = process.env.HTTPS_PORT || process.env.PORT || 4444
+            if (ENABLE_TLS) {
+                const creds = getTlsOptions()
+                https.createServer(creds, app).listen(httpsPort, () => {
+                    logger.info(`Catalog Service running on port ${httpsPort} with TLS`)
+                })
+            } else {
+                http.createServer(app).listen(httpsPort, () => {
+                    logger.info(`Catalog Service running on port ${httpsPort} without TLS`)
+                })
+            }
 
-            // Optional HTTP redirect server
-            if (process.env.REDIRECT_SERVER === 'TRUE') {
+            if (ENABLE_TLS && String(process.env.REDIRECT_SERVER || 'false').toLowerCase() === 'true') {
                 const httpPort = process.env.HTTP_PORT || 4044
                 http.createServer((req, res) => {
                     const host = req.headers.host || `localhost:${httpsPort}`;

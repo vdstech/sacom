@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAccount } from "@/components/AccountProvider";
 import { ProductCard } from "@/components/ProductCard";
 import { useStoreCart } from "@/components/StoreProvider";
-import { addCustomerWishlistItem } from "@/lib/accountApi";
+import { addCustomerWishlistItem, createProductReview, fetchMyProductReview } from "@/lib/accountApi";
 import { formatMoney, getPriceDisplay } from "@/lib/pricing";
 import { rememberProduct, getRecentlyViewed } from "@/lib/recentlyViewed";
-import { fetchCategoryTree, fetchStore, type ProductDetail, type ProductListItem, type ProductVariant } from "@/lib/storeApi";
+import { fetchCategoryTree, fetchProductReviews, fetchStore, type ProductDetail, type ProductListItem, type ProductReview, type ProductVariant } from "@/lib/storeApi";
 import {
   findCategoryNodeBySlug,
   isNotFoundError,
@@ -19,6 +20,12 @@ import {
 import { STOREFRONT_STRINGS } from "@/lib/strings";
 
 const TABS = ["description", "dry-clean", "shipping", "returns"] as const;
+
+type ReviewFormState = {
+  rating: number;
+  title: string;
+  comment: string;
+};
 
 function formatVariantMeta(variant: ProductVariant) {
   return (variant.colors || []).map((entry) => entry?.name).filter(Boolean).join(", ") || STOREFRONT_STRINGS.product.variantFallback;
@@ -30,6 +37,81 @@ function getVariantSwatchImageUrl(variant: ProductVariant) {
 
 function getVariantSwatchHex(variant: ProductVariant) {
   return String(variant.colors?.find((entry) => entry?.hex)?.hex || "").trim();
+}
+
+function buildReviewStatusMessage(review: ProductReview | null) {
+  if (!review) return "";
+  if (review.status === "PENDING") return STOREFRONT_STRINGS.product.reviewPendingModeration;
+  if (review.status === "REJECTED") return STOREFRONT_STRINGS.product.reviewRejected;
+  if (review.status === "HIDDEN") return STOREFRONT_STRINGS.product.reviewHidden;
+  return STOREFRONT_STRINGS.product.reviewAlreadySubmitted;
+}
+
+function StarRatingInput({
+  value,
+  onChange,
+  label,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  label: string;
+}) {
+  const [preview, setPreview] = useState(0);
+  const displayValue = preview || value;
+
+  const selectRating = (nextValue: number) => {
+    onChange(Math.min(5, Math.max(1, nextValue)));
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, rating: number) => {
+    if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+      event.preventDefault();
+      selectRating(rating + 1);
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+      event.preventDefault();
+      selectRating(rating - 1);
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      selectRating(1);
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      selectRating(5);
+    }
+  };
+
+  return (
+    <fieldset className="star-rating" aria-label={label}>
+      <legend>{label}</legend>
+      <div className="star-rating__group" role="radiogroup" aria-label={label}>
+        {[1, 2, 3, 4, 5].map((rating) => {
+          const filled = rating <= displayValue;
+          return (
+            <button
+              key={rating}
+              type="button"
+              className={`star-rating__button ${filled ? "is-filled" : ""}`}
+              role="radio"
+              aria-checked={value === rating}
+              aria-label={`${rating} out of 5 stars`}
+              tabIndex={value === rating ? 0 : -1}
+              onClick={() => selectRating(rating)}
+              onMouseEnter={() => setPreview(rating)}
+              onMouseLeave={() => setPreview(0)}
+              onFocus={() => setPreview(rating)}
+              onBlur={() => setPreview(0)}
+              onKeyDown={(event) => handleKeyDown(event, rating)}
+            >
+              <span aria-hidden="true">★</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="star-rating__status" aria-live="polite">{value} / 5 selected</div>
+    </fieldset>
+  );
 }
 
 export default function ProductDetailPage() {
@@ -51,6 +133,15 @@ export default function ProductDetailPage() {
   const [wishlistMessage, setWishlistMessage] = useState("");
   const [categoryHref, setCategoryHref] = useState("");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [reviews, setReviews] = useState<ProductReview[]>([]);
+  const [reviewSummary, setReviewSummary] = useState<ProductDetail["ratingSummary"] | null>(null);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState("");
+  const [myReview, setMyReview] = useState<ProductReview | null>(null);
+  const [reviewForm, setReviewForm] = useState<ReviewFormState>({ rating: 5, title: "", comment: "" });
+  const [reviewSubmitBusy, setReviewSubmitBusy] = useState(false);
+  const [reviewSubmitMessage, setReviewSubmitMessage] = useState("");
+  const [reviewSubmitError, setReviewSubmitError] = useState("");
 
   useEffect(() => {
     if (!slug) return;
@@ -153,6 +244,39 @@ export default function ProductDetailPage() {
     };
   }, [slug]);
 
+  useEffect(() => {
+    if (!product?._id) return;
+    const currentProduct = product;
+    let cancelled = false;
+
+    async function loadReviews() {
+      try {
+        setReviewsLoading(true);
+        const [publicReviews, currentCustomerReview] = await Promise.all([
+          fetchProductReviews(currentProduct._id, 1, 10),
+          customer && accessToken
+            ? fetchMyProductReview(accessToken, currentProduct._id)
+            : Promise.resolve({ review: null }),
+        ]);
+        if (cancelled) return;
+        setReviews(publicReviews.reviews || []);
+        setReviewSummary(publicReviews.summary || currentProduct.ratingSummary || null);
+        setMyReview(currentCustomerReview.review || null);
+        setReviewsError("");
+      } catch (error) {
+        if (cancelled) return;
+        setReviewsError(toTechnicalBannerMessage(error));
+      } finally {
+        if (!cancelled) setReviewsLoading(false);
+      }
+    }
+
+    void loadReviews();
+    return () => {
+      cancelled = true;
+    };
+  }, [product?._id, product?.ratingSummary, customer, accessToken]);
+
   const selectedVariant = useMemo(
     () => (product?.variants || []).find((variant) => variant._id === selectedVariantId) || product?.variants?.[0] || null,
     [product, selectedVariantId]
@@ -194,6 +318,40 @@ export default function ProductDetailPage() {
     }
   };
 
+  const handleSubmitReview = async () => {
+    if (!product?._id) return;
+    if (!customer || !accessToken) {
+      router.push(`/account/auth?returnTo=${encodeURIComponent(`/products/${product.slug}`)}`);
+      return;
+    }
+    setReviewSubmitBusy(true);
+    setReviewSubmitError("");
+    setReviewSubmitMessage("");
+    try {
+      const payload = await createProductReview(accessToken, product._id, {
+        rating: reviewForm.rating,
+        title: reviewForm.title,
+        comment: reviewForm.comment,
+        variantId: selectedVariant?._id || undefined,
+      });
+      const createdReview = payload.review;
+      setMyReview(createdReview);
+      if (String(createdReview.status || "").toUpperCase() === "APPROVED") {
+        const publicReviews = await fetchProductReviews(product._id, 1, 10);
+        setReviews(publicReviews.reviews || []);
+        setReviewSummary(publicReviews.summary || product.ratingSummary || null);
+        setReviewSubmitMessage(STOREFRONT_STRINGS.product.reviewPublished);
+      } else {
+        setReviewSubmitMessage(STOREFRONT_STRINGS.product.reviewSubmitted);
+      }
+      setReviewForm({ rating: 5, title: "", comment: "" });
+    } catch (error) {
+      setReviewSubmitError(error instanceof Error ? error.message : STOREFRONT_STRINGS.product.reviewRejected);
+    } finally {
+      setReviewSubmitBusy(false);
+    }
+  };
+
   const tabContent = useMemo(() => {
     if (!product) return "";
     if (activeTab === "description") return product.description || product.shortDescription || STOREFRONT_STRINGS.product.descriptionFallback;
@@ -210,6 +368,10 @@ export default function ProductDetailPage() {
   const selectedVariantLabel = selectedVariant ? formatVariantMeta(selectedVariant) : STOREFRONT_STRINGS.product.variantFallback;
   const variants = product?.variants || [];
   const hasMultipleVariants = variants.length > 1;
+  const averageRating = Number(reviewSummary?.averageRating || product?.ratingSummary?.averageRating || 0);
+  const reviewCount = Number(reviewSummary?.reviewCount || product?.ratingSummary?.reviewCount || 0);
+  const distribution = reviewSummary?.distribution || product?.ratingSummary?.distribution || {};
+  const myReviewStatusMessage = buildReviewStatusMessage(myReview);
 
   return (
     <section className="section">
@@ -267,6 +429,12 @@ export default function ProductDetailPage() {
               <div className="product-price">
                 <div className="product-price__amounts">
                   <strong>{formatMoney(price.finalPrice)}</strong>
+                  <div className="section-copy">{STOREFRONT_STRINGS.product.inclusiveOfGst}</div>
+                  <div className="section-copy">
+                    {reviewCount > 0
+                      ? `${averageRating.toFixed(1)} ★ • ${reviewCount} review${reviewCount === 1 ? "" : "s"}`
+                      : STOREFRONT_STRINGS.product.reviewSummaryEmpty}
+                  </div>
                   {price.hasDiscount ? (
                     <div className="product-price__meta">
                       <span className="product-price__original">{formatMoney(price.originalPrice)}</span>
@@ -373,6 +541,110 @@ export default function ProductDetailPage() {
               <div className="tab-panel">{tabContent}</div>
             </div>
           </article>
+
+          <section className="section">
+            <div className="section-header">
+              <div>
+                <div className="section-kicker">{STOREFRONT_STRINGS.product.reviewsTitle}</div>
+                <h2 className="section-title">{STOREFRONT_STRINGS.product.reviewsSubtitle}</h2>
+              </div>
+            </div>
+
+            {reviewsError ? <div className="status-banner status-banner--error">{reviewsError}</div> : null}
+            {reviewsLoading ? <div className="section-copy">{STOREFRONT_STRINGS.product.reviewsLoading}</div> : null}
+
+            <div className="card" style={{ display: "grid", gap: 16 }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
+                <div>
+                  <div className="section-kicker">{STOREFRONT_STRINGS.product.reviewsTitle}</div>
+                  <div style={{ fontSize: 28, fontWeight: 700 }}>
+                    {reviewCount > 0 ? `${averageRating.toFixed(1)} ★` : STOREFRONT_STRINGS.product.reviewSummaryEmpty}
+                  </div>
+                  <div className="section-copy">{reviewCount} approved review{reviewCount === 1 ? "" : "s"}</div>
+                </div>
+                <div style={{ minWidth: 220, display: "grid", gap: 6 }}>
+                  {[5, 4, 3, 2, 1].map((rating) => (
+                    <div key={rating} className="row" style={{ justifyContent: "space-between", gap: 12 }}>
+                      <span>{rating} ★</span>
+                      <span className="section-copy">{Number(distribution?.[rating] || 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderTop: "1px solid rgba(15, 23, 42, 0.08)", paddingTop: 16, display: "grid", gap: 12 }}>
+                {customer ? (
+                  myReview ? (
+                    <div className="status-banner">{myReviewStatusMessage}</div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 12 }}>
+                      <div className="section-kicker">{STOREFRONT_STRINGS.product.writeReviewTitle}</div>
+                      <StarRatingInput
+                        value={reviewForm.rating}
+                        onChange={(rating) => setReviewForm((current) => ({ ...current, rating }))}
+                        label={STOREFRONT_STRINGS.product.reviewFields.rating}
+                      />
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span>{STOREFRONT_STRINGS.product.reviewFields.title}</span>
+                        <input
+                          value={reviewForm.title}
+                          onChange={(event) => setReviewForm((current) => ({ ...current, title: event.target.value }))}
+                          maxLength={120}
+                        />
+                      </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span>{STOREFRONT_STRINGS.product.reviewFields.comment}</span>
+                        <textarea
+                          value={reviewForm.comment}
+                          onChange={(event) => setReviewForm((current) => ({ ...current, comment: event.target.value }))}
+                          rows={4}
+                          maxLength={2000}
+                        />
+                      </label>
+                      {reviewSubmitError ? <div className="status-banner status-banner--error">{reviewSubmitError}</div> : null}
+                      {reviewSubmitMessage ? <div className="status-banner">{reviewSubmitMessage}</div> : null}
+                      <div className="row">
+                        <button type="button" className="primary-button" disabled={reviewSubmitBusy} onClick={handleSubmitReview}>
+                          {reviewSubmitBusy ? STOREFRONT_STRINGS.product.reviewSubmitting : STOREFRONT_STRINGS.product.reviewSubmit}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div className="row" style={{ justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                    <div className="section-copy">{STOREFRONT_STRINGS.product.guestReviewPrompt}</div>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => router.push(`/account/auth?returnTo=${encodeURIComponent(`/products/${product.slug}`)}`)}
+                    >
+                      {STOREFRONT_STRINGS.product.signInToReview}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gap: 12 }}>
+                {reviews.length ? reviews.map((review) => (
+                  <article key={review.id} className="card" style={{ display: "grid", gap: 8 }}>
+                    <div className="row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{review.title}</div>
+                        <div className="section-copy">{review.customerDisplayName}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div>{`${review.rating} / 5`}</div>
+                        {review.verifiedBuyer ? <div className="section-copy">{STOREFRONT_STRINGS.product.verifiedBuyer}</div> : null}
+                      </div>
+                    </div>
+                    <div>{review.comment}</div>
+                  </article>
+                )) : (
+                  !reviewsLoading ? <div className="section-copy">{STOREFRONT_STRINGS.product.reviewsEmpty}</div> : null
+                )}
+              </div>
+            </div>
+          </section>
 
           <section className="section">
             <div className="section-header">

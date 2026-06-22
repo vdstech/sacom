@@ -51,9 +51,9 @@ export default function LoginPage() {
           {ADMIN_UI_STRINGS.login.localUrlsCopy}
         </p>
         <ul style={{ marginBottom: 0 }}>
-          <li>{ADMIN_UI_STRINGS.localUrls.adminPortal}: <a href="https://localhost:3000">https://localhost:3000</a></li>
-          <li>{ADMIN_UI_STRINGS.localUrls.gatewayApi}: <a href="https://localhost:4000">https://localhost:4000</a></li>
-          <li>{ADMIN_UI_STRINGS.localUrls.gatewayHealth}: <a href="https://localhost:4000/health">https://localhost:4000/health</a></li>
+          <li>{ADMIN_UI_STRINGS.localUrls.adminPortal}: <a href="http://localhost:3000">http://localhost:3000</a></li>
+          <li>{ADMIN_UI_STRINGS.localUrls.gatewayApi}: <a href="http://localhost:4000">http://localhost:4000</a></li>
+          <li>{ADMIN_UI_STRINGS.localUrls.gatewayHealth}: <a href="http://localhost:4000/health">http://localhost:4000/health</a></li>
           <li>{ADMIN_UI_STRINGS.localUrls.storefront}: <a href="http://localhost:3001">http://localhost:3001</a></li>
         </ul>
       </section>

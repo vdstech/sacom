@@ -7,6 +7,8 @@ import { STOREFRONT_STRINGS } from "@/lib/strings";
 
 export function ProductCard({ product }: { product: ProductListItem }) {
   const price = getPriceDisplay(product.defaultVariant);
+  const averageRating = Number(product.ratingSummary?.averageRating || 0);
+  const reviewCount = Number(product.ratingSummary?.reviewCount || 0);
 
   return (
     <article className="store-card">
@@ -25,14 +27,18 @@ export function ProductCard({ product }: { product: ProductListItem }) {
         )}
       </Link>
       <div className="product-card__body">
-        <div className="product-card__eyebrow">{product.categorySlug || STOREFRONT_STRINGS.brand.name}</div>
+        <div className="product-card__eyebrow">{product.categorySlug || STOREFRONT_STRINGS.brand.fallbackCategoryLabel}</div>
         <Link href={`/products/${product.slug}`} className="product-card__title">
           {product.title}
         </Link>
         <div className="product-card__copy">{product.shortDescription || STOREFRONT_STRINGS.productCard.fallbackDescription}</div>
+        {reviewCount > 0 ? (
+          <div className="section-copy">{STOREFRONT_STRINGS.productCard.reviewsLabel(averageRating, reviewCount)}</div>
+        ) : null}
         <div className="product-card__footer">
           <div className="product-card__price">
             <strong>{formatMoney(price.finalPrice)}</strong>
+            <div className="section-copy">{STOREFRONT_STRINGS.productCard.inclusiveOfGst}</div>
             {price.hasDiscount ? (
               <div className="product-card__price-meta">
                 <span className="product-card__original-price">{formatMoney(price.originalPrice)}</span>

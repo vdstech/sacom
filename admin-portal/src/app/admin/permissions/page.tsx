@@ -10,11 +10,13 @@ type PermissionDoc = {
   _id: string;
   code: string;
   description: string;
+  isSystemPermission?: boolean;
 };
 
 export default function PermissionsPage() {
   const { accessToken, refreshAccessToken, me } = useAuth();
   const [permissions, setPermissions] = useState<PermissionDoc[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, { code: string; description: string }>>({});
   const [error, setError] = useState("");
   const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
   const canMutatePermissions = systemLevel === "SUPER";
@@ -27,7 +29,52 @@ export default function PermissionsPage() {
         onUnauthorized: refreshAccessToken,
       });
       setPermissions(payload.permissions || []);
+      setDrafts(
+        Object.fromEntries(
+          (payload.permissions || []).map((permission) => [
+            permission._id,
+            { code: permission.code, description: permission.description },
+          ])
+        )
+      );
       setError("");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const updatePermission = async (permission: PermissionDoc) => {
+    if (!canMutatePermissions) return;
+    const draft = drafts[permission._id];
+    if (!draft) return;
+    try {
+      await apiRequest("/api/admin/permissions", {
+        service: "auth",
+        method: "PUT",
+        token: accessToken,
+        onUnauthorized: refreshAccessToken,
+        body: {
+          id: permission._id,
+          code: draft.code,
+          description: draft.description,
+        },
+      });
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const deletePermission = async (permission: PermissionDoc) => {
+    if (!canMutatePermissions) return;
+    try {
+      await apiRequest(`/api/admin/permissions/${permission._id}`, {
+        service: "auth",
+        method: "DELETE",
+        token: accessToken,
+        onUnauthorized: refreshAccessToken,
+      });
+      await load();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -74,26 +121,43 @@ export default function PermissionsPage() {
       </section>
       {error ? <div className="error">{error}</div> : null}
       <DataTable
-        headers={["Code", "Description", "Action"]}
+        headers={["Code", "Description", "Protection", "Action"]}
         rows={permissions.map((p) => [
-          p.code,
-          p.description,
           canMutatePermissions ? (
-            <button
-              key={p._id}
-              className="danger"
-              onClick={async () => {
-                await apiRequest(`/api/admin/permissions/${p._id}`, {
-                  service: "auth",
-                  method: "DELETE",
-                  token: accessToken,
-                  onUnauthorized: refreshAccessToken,
-                });
-                load();
-              }}
-            >
-              Delete
-            </button>
+            <div key={`${p._id}:code`} style={{ display: "grid", gap: 6 }}>
+              <input
+                value={drafts[p._id]?.code || ""}
+                disabled={!!p.isSystemPermission}
+                onChange={(event) => setDrafts((current) => ({
+                  ...current,
+                  [p._id]: { ...(current[p._id] || { code: p.code, description: p.description }), code: event.target.value },
+                }))}
+              />
+              {p.isSystemPermission ? <small style={{ opacity: 0.75 }}>System permission code is locked.</small> : null}
+            </div>
+          ) : p.code,
+          canMutatePermissions ? (
+            <input
+              key={`${p._id}:description`}
+              value={drafts[p._id]?.description || ""}
+              onChange={(event) => setDrafts((current) => ({
+                ...current,
+                [p._id]: { ...(current[p._id] || { code: p.code, description: p.description }), description: event.target.value },
+              }))}
+            />
+          ) : p.description,
+          p.isSystemPermission ? "System protected" : "Custom",
+          canMutatePermissions ? (
+            <div key={p._id} className="row" style={{ gap: 8 }}>
+              <button type="button" onClick={() => void updatePermission(p)}>Save</button>
+              <button
+                type="button"
+                className="danger"
+                onClick={() => void deletePermission(p)}
+              >
+                Delete
+              </button>
+            </div>
           ) : "Read only",
         ])}
       />

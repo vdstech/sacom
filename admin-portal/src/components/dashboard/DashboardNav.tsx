@@ -10,6 +10,11 @@ const DASHBOARD_SECTIONS = [
   { id: "ordersDashboard", href: "/admin/orders/dashboard", label: "Overview" },
   { id: "ordersMetrics", href: "/admin/orders/metrics", label: "Sales" },
   { id: "orders", href: "/admin/orders", label: "Orders" },
+  { id: "processingManager", href: "/admin/orders/processing", label: "Processing" },
+  { id: "packagingManager", href: "/admin/orders/packaging", label: "Packaging" },
+  { id: "shippingOperator", href: "/admin/orders/shipping", label: "Shipping" },
+  { id: "cancellationManager", href: "/admin/orders/cancellations", label: "Cancellations" },
+  { id: "returnExchangeManager", href: "/admin/orders/returns-exchanges", label: "Returns" },
   { id: "inventory", href: "/admin/inventory", label: "Inventory" },
   { id: "products", href: "/admin/products", label: "Products" },
 ];

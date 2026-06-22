@@ -43,6 +43,14 @@ const ADDRESS_FIELDS = [
   ["country", STOREFRONT_STRINGS.account.addresses.fields.country],
 ] as const;
 
+function isInventoryChangedError(message: string) {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("inventory changed before checkout could complete")
+    || normalized.includes("cart quantity exceeds current stock")
+    || normalized.includes("selected size is out of stock")
+    || normalized.includes("no longer available");
+}
+
 export default function CheckoutConfirmationPage() {
   const router = useRouter();
   const { ready, customer, loading: accountLoading, accessToken } = useAccount();
@@ -207,7 +215,7 @@ export default function CheckoutConfirmationPage() {
     }
   };
 
-  const placeOrder = async (paymentStatus: "paid" | "payment_failed") => {
+  const placeOrder = async () => {
     if (!accessToken || placingOrder || !selectedAddressId || !checkoutSession?.id) return;
 
     setPlacingOrder(true);
@@ -215,7 +223,7 @@ export default function CheckoutConfirmationPage() {
     try {
       const payload = await confirmCheckoutSession(accessToken, checkoutSession.id, {
         addressId: selectedAddressId,
-        paymentStatus,
+        paymentStatus: "paid",
       });
       completedSessionRef.current = true;
       await refreshCart();
@@ -223,6 +231,19 @@ export default function CheckoutConfirmationPage() {
       router.push(`/checkout/success/${payload.order.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : STOREFRONT_STRINGS.checkout.placeOrderFailed;
+      if (isInventoryChangedError(message)) {
+        try {
+          await refreshCart();
+        } catch {}
+        if (checkoutSession?.id) {
+          try {
+            await refreshSession(checkoutSession.id);
+          } catch {}
+        }
+        router.push("/checkout?inventoryChanged=1");
+        return;
+      }
+
       setStatusMessage(message);
       setStatusTone("error");
       if (checkoutSession?.id) {
@@ -351,17 +372,29 @@ export default function CheckoutConfirmationPage() {
                 </div>
               ))}
               <div className="checkout-summary__row">
-                <span>Subtotal</span>
-                <strong>{formatMoney(Number(cart?.subtotal || 0))}</strong>
+                <span>{STOREFRONT_STRINGS.checkout.subtotalLabel}</span>
+                <strong>{formatMoney(Number(checkoutSession?.subtotal || cart?.subtotal || 0))}</strong>
               </div>
-              {checkoutSession?.coupon ? (
+              <div className="section-copy">{STOREFRONT_STRINGS.checkout.priceInclusiveLabel}</div>
+              {Number(checkoutSession?.discountTotal || 0) > 0 ? (
                 <div className="checkout-summary__row">
-                  <span>{checkoutSession.coupon.code}</span>
-                  <strong>-{formatMoney(Number(checkoutSession.couponAppliedAmount || 0))}</strong>
+                  <span>Discount</span>
+                  <strong>-{formatMoney(Number(checkoutSession?.discountTotal || 0))}</strong>
                 </div>
               ) : null}
+              {checkoutSession?.coupon ? (
+                <div className="section-copy">{checkoutSession.coupon.code} applied</div>
+              ) : null}
               <div className="checkout-summary__row">
-                <span>Payable</span>
+                <span>{STOREFRONT_STRINGS.checkout.gstIncludedLabel}</span>
+                <strong>{formatMoney(Number(checkoutSession?.includedTaxTotal || checkoutSession?.taxTotal || 0))}</strong>
+              </div>
+              <div className="checkout-summary__row">
+                <span>{STOREFRONT_STRINGS.checkout.shippingLabel}</span>
+                <strong>{formatMoney(Number(checkoutSession?.shippingTotal || 0))}</strong>
+              </div>
+              <div className="checkout-summary__row">
+                <span>{STOREFRONT_STRINGS.checkout.totalPayableLabel}</span>
                 <strong>{formatMoney(Number(checkoutSession?.payableAmount ?? cart?.subtotal ?? 0))}</strong>
               </div>
               {Number(checkoutSession?.forfeitureAmount || 0) > 0 ? (
@@ -372,21 +405,13 @@ export default function CheckoutConfirmationPage() {
                   type="button"
                   className="checkout-button"
                   disabled={!selectedAddressId || placingOrder || !checkoutSession}
-                  onClick={() => placeOrder("paid")}
+                  onClick={() => placeOrder()}
                 >
                   {placingOrder
                     ? STOREFRONT_STRINGS.account.auth.submit.busy
                     : Number(checkoutSession?.payableAmount || 0) === 0
                       ? STOREFRONT_STRINGS.checkout.confirmOrderButton
                       : payLabel}
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={!selectedAddressId || placingOrder || !checkoutSession}
-                  onClick={() => placeOrder("payment_failed")}
-                >
-                  {placingOrder ? STOREFRONT_STRINGS.account.auth.submit.busy : STOREFRONT_STRINGS.checkout.paymentFailedButton}
                 </button>
               </div>
             </aside>

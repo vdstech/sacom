@@ -5,6 +5,7 @@ import {
   DEFAULT_RETURN_WINDOW_DAYS,
   DEFAULT_SHIPPING_TEXT,
 } from "./defaultMetadata.js";
+import { ProductRatingSummarySchema } from "../review/review.model.js";
 
 function slugify(text) {
   return String(text || "")
@@ -62,6 +63,7 @@ const ProductSchema = new mongoose.Schema(
     care: { type: CarePolicySchema, default: () => ({}) },
     returnPolicy: { type: ReturnPolicySchema, default: () => ({}) },
     details: { type: mongoose.Schema.Types.Mixed, default: {} },
+    ratingSummary: { type: ProductRatingSummarySchema, default: () => ({}) },
 
     isActive: { type: Boolean, default: true },
     isFeatured: { type: Boolean, default: false },

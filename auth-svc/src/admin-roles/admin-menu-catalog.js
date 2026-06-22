@@ -13,6 +13,7 @@ export const ADMIN_MENU_IDS = [
   "returnExchangeManager",
   "categories",
   "products",
+  "productReviews",
   "orders",
   "inventory",
   "systemHealth",

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AccountPanel } from "@/components/AccountPanel";
 import { useAccount } from "@/components/AccountProvider";
+import { BrandLogo } from "@/components/BrandLogo";
 import { fetchCategoryTree } from "@/lib/storeApi";
 import type { UiNode } from "@/lib/types";
 import { mapCategoryTree, toErrorMessage } from "@/lib/storefront";
@@ -19,6 +20,60 @@ function isStaticDuplicateNav(node: UiNode) {
   const label = normalizeNavValue(node.label);
   const href = normalizeNavValue(node.href);
   return label === "home" || label === "new arrivals" || href === "/" || href === "/new-arrivals";
+}
+
+type NavPriorityItem = {
+  label: string;
+  aliases?: string[];
+};
+
+const DESKTOP_NAV_PRIORITY: NavPriorityItem[] = [
+  { label: "Home" },
+  { label: "New Arrivals" },
+  { label: "Sarees" },
+  { label: "Jewellery" },
+  { label: "Blouse", aliases: ["Blouses"] },
+  { label: "Dupatta", aliases: ["Dupattas"] },
+  { label: "Garden Vareli", aliases: ["GARDEN VARELI", "Garden Vareli Sarees"] },
+  { label: "Digital Prints", aliases: ["DIGITAL PRINTS", "Digital Print"] },
+  { label: "Sale" },
+  { label: "Half Price Store" },
+];
+
+const TABLET_NAV_PRIORITY: NavPriorityItem[] = [
+  { label: "Home" },
+  { label: "New Arrivals" },
+  { label: "Sarees" },
+  { label: "Jewellery" },
+  { label: "Dupatta", aliases: ["Dupattas"] },
+  { label: "Garden Vareli", aliases: ["GARDEN VARELI", "Garden Vareli Sarees"] },
+  { label: "Digital Prints", aliases: ["DIGITAL PRINTS", "Digital Print"] },
+  { label: "Sale" },
+];
+
+function flattenUiNodes(nodes: UiNode[] = [], out: UiNode[] = []) {
+  for (const node of nodes) {
+    out.push(node);
+    if (node.children?.length) flattenUiNodes(node.children, out);
+  }
+  return out;
+}
+
+function findUiNodeByLabel(nodes: UiNode[], item: NavPriorityItem) {
+  const expected = new Set([item.label, ...(item.aliases || [])].map(normalizeNavValue));
+  return flattenUiNodes(nodes, []).find((node) => expected.has(normalizeNavValue(node.label))) || null;
+}
+
+function buildPrimaryNav(nodes: UiNode[], items: NavPriorityItem[]) {
+  const usedIds = new Set<string>();
+  return items
+    .map((item) => findUiNodeByLabel(nodes, item))
+    .filter((node): node is UiNode => !!node)
+    .filter((node) => {
+      if (usedIds.has(node.id)) return false;
+      usedIds.add(node.id);
+      return true;
+    });
 }
 
 function AccountIcon() {
@@ -175,19 +230,22 @@ function MobileMenuList({
         return (
           <li key={node.id} className="mobile-nav__item">
             {hasChildren ? (
-              <button
-                type="button"
-                className="mobile-nav__row mobile-nav__row--button"
-                style={{ paddingLeft: `${depth * 0.9}rem` }}
-                aria-expanded={expanded}
-                aria-label={`${expanded ? "Collapse" : "Expand"} ${node.label}`}
-                onClick={() => onToggle(node.id)}
-              >
-                <span className="mobile-nav__link">
-                  <span>{node.label}</span>
-                  <ChevronIcon expanded={expanded} />
-                </span>
-              </button>
+              <div className="mobile-nav__row" style={{ paddingLeft: `${depth * 0.9}rem` }}>
+                <div className="mobile-nav__branch">
+                  <Link href={node.href || "#"} className="mobile-nav__branch-link" onClick={onNavigate}>
+                    <span>{node.label}</span>
+                  </Link>
+                  <button
+                    type="button"
+                    className="mobile-nav__toggle"
+                    aria-expanded={expanded}
+                    aria-label={`${expanded ? "Collapse" : "Expand"} ${node.label}`}
+                    onClick={() => onToggle(node.id)}
+                  >
+                    <ChevronIcon expanded={expanded} />
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="mobile-nav__row" style={{ paddingLeft: `${depth * 0.9}rem` }}>
                 <Link href={node.href || "#"} className="mobile-nav__link" onClick={onNavigate}>
@@ -220,6 +278,7 @@ export function NavBar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileExpandedIds, setMobileExpandedIds] = useState<string[]>([]);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [isTabletViewport, setIsTabletViewport] = useState(false);
   const [panelLeft, setPanelLeft] = useState(0);
   const { cart, setOpen } = useStoreCart();
   const { customer } = useAccount();
@@ -258,18 +317,30 @@ export function NavBar() {
     ]),
     [tree]
   );
+  const desktopPrimaryNav = useMemo(
+    () => buildPrimaryNav(topLevel, isTabletViewport ? TABLET_NAV_PRIORITY : DESKTOP_NAV_PRIORITY),
+    [isTabletViewport, topLevel]
+  );
   const openRoot = useMemo(
-    () => topLevel.find((node) => node.id === openRootId && node.children?.length) || null,
-    [openRootId, topLevel]
+    () => desktopPrimaryNav.find((node) => node.id === openRootId && node.children?.length) || null,
+    [desktopPrimaryNav, openRootId]
   );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const mediaQuery = window.matchMedia("(max-width: 1100px)");
-    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+    const mobileQuery = window.matchMedia("(max-width: 1100px)");
+    const tabletQuery = window.matchMedia("(max-width: 1360px)");
+    const updateViewport = () => {
+      setIsMobileViewport(mobileQuery.matches);
+      setIsTabletViewport(tabletQuery.matches && !mobileQuery.matches);
+    };
     updateViewport();
-    mediaQuery.addEventListener("change", updateViewport);
-    return () => mediaQuery.removeEventListener("change", updateViewport);
+    mobileQuery.addEventListener("change", updateViewport);
+    tabletQuery.addEventListener("change", updateViewport);
+    return () => {
+      mobileQuery.removeEventListener("change", updateViewport);
+      tabletQuery.removeEventListener("change", updateViewport);
+    };
   }, []);
 
   useEffect(() => {
@@ -438,12 +509,12 @@ export function NavBar() {
 
   return (
     <header className="site-header">
-      <div className="site-header__promo">COD &amp; Free Shipping Above Rs. 2500/-</div>
+      <div className="site-header__promo">{STOREFRONT_STRINGS.navigation.promo}</div>
 
       <div className="site-header__inner">
         <div className="site-header__brand">
-          <Link href="/" aria-label="Siri home">
-            <img src="/brand/siri-logo.png" alt="Siri" className="site-header__logo" />
+          <Link href="/" aria-label={STOREFRONT_STRINGS.brand.homeAriaLabel}>
+            <BrandLogo />
           </Link>
         </div>
 
@@ -455,7 +526,7 @@ export function NavBar() {
         >
           <nav className="site-header__nav" aria-label="Primary">
             {err ? <div className="nav-error">Menu unavailable</div> : null}
-            {topLevel.map((top) => {
+            {desktopPrimaryNav.map((top) => {
               const hasChildren = !!top.children?.length;
               const isOpen = openRootId === top.id;
               return (
@@ -501,6 +572,7 @@ export function NavBar() {
               setOpenRootId(null);
               setMobileMenuOpen((current) => !current);
             }}
+            title={STOREFRONT_STRINGS.navigation.menu}
           >
             <MenuIcon />
           </button>

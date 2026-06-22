@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ProtectedPage } from "@/components/ProtectedPage";
 import { DashboardNav } from "@/components/dashboard/DashboardNav";
+import { OrderOperationsDashboard } from "@/components/orders/OrderOperationsDashboard";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { ADMIN_UI_STRINGS } from "@/lib/uiStrings";
@@ -48,11 +49,11 @@ const STATUS_OPTIONS = [
 const STATUS_LABELS: Record<string, string> = {
   "PLACED,PARTIALLY_PICKED,PICKED,PARTIALLY_PACKED,PACKED,PARTIALLY_SHIPPED,PARTIALLY_CANCELLED": "Pending fulfillment",
   PLACED: "Placed",
-  PARTIALLY_PICKED: "Partially Picked",
+  PARTIALLY_PICKED: "Picking In Progress",
   PICKED: "Picked",
-  PARTIALLY_PACKED: "Partially Packed",
+  PARTIALLY_PACKED: "Packaging In Progress",
   PACKED: "Packed",
-  PARTIALLY_SHIPPED: "Partially Shipped",
+  PARTIALLY_SHIPPED: "Shipment In Progress",
   SHIPPED: "Shipped",
   PARTIALLY_CANCELLED: "Partially Cancelled",
   CANCELLED: "Cancelled",
@@ -93,7 +94,7 @@ function buildQueryString(params: URLSearchParams, overrides: Record<string, str
 }
 
 function OrdersPageContent() {
-  const { accessToken, refreshAccessToken } = useAuth();
+  const { accessToken, refreshAccessToken, me } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -102,6 +103,8 @@ function OrdersPageContent() {
   const [error, setError] = useState("");
   const [searchInput, setSearchInput] = useState(searchParams.get("search") || "");
   const [statusInput, setStatusInput] = useState(searchParams.get("orderStatus") || "");
+  const systemLevel = String(me?.systemLevel || me?.user?.systemLevel || "NONE").toUpperCase();
+  const canUseAdminOperations = systemLevel === "ADMIN" || systemLevel === "SUPER";
 
   useEffect(() => {
     setSearchInput(searchParams.get("search") || "");
@@ -153,6 +156,15 @@ function OrdersPageContent() {
     router.push(queryString ? `${pathname}?${queryString}` : pathname);
   };
 
+  const handleStatusChange = (nextStatus: string) => {
+    setStatusInput(nextStatus);
+    const queryString = buildQueryString(searchParams, {
+      search: searchInput || null,
+      orderStatus: nextStatus || null,
+    });
+    router.push(queryString ? `${pathname}?${queryString}` : pathname);
+  };
+
   const clearFilters = () => {
     setSearchInput("");
     setStatusInput("");
@@ -173,7 +185,7 @@ function OrdersPageContent() {
         <div className="dashboard-hero__actions">
           <label className="dashboard-filter">
             <span>{ADMIN_UI_STRINGS.orders.ordersFilterStatus}</span>
-            <select value={statusInput} onChange={(event) => setStatusInput(event.target.value)}>
+            <select value={statusInput} onChange={(event) => handleStatusChange(event.target.value)}>
               <option value="">{ADMIN_UI_STRINGS.orders.allStatuses}</option>
               {STATUS_OPTIONS.filter(Boolean).map((status) => (
                 <option key={status} value={status}>{normalizeStatusLabel(status)}</option>
@@ -197,6 +209,8 @@ function OrdersPageContent() {
 
       {error ? <div className="error">{error}</div> : null}
       {loading ? <section className="card dashboard-empty">{ADMIN_UI_STRINGS.common.loadingOrders}</section> : null}
+
+      {canUseAdminOperations ? <OrderOperationsDashboard /> : null}
 
       {!loading && payload ? (
         <section className="card dashboard-panel">

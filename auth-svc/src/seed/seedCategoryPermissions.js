@@ -13,6 +13,7 @@ export const PHASE1_PERMISSION_DEFINITIONS = [
   { code: "permission:create", description: "Create permissions" },
   { code: "permission:update", description: "Update permissions" },
   { code: "permission:delete", description: "Delete permissions" },
+  { code: "audit:read", description: "View audit logs" },
   { code: "category:read", description: "View categories" },
   { code: "category:create", description: "Create categories" },
   { code: "category:update", description: "Update categories" },
@@ -22,15 +23,19 @@ export const PHASE1_PERMISSION_DEFINITIONS = [
   { code: "product:update", description: "Update products" },
   { code: "product:delete", description: "Delete products" },
   { code: "product:publish", description: "Publish/unpublish products" },
+  { code: "review:read", description: "View product reviews and moderation queues" },
+  { code: "review:moderate", description: "Approve, reject, or hide product reviews" },
   { code: "inventory:read", description: "View inventory" },
   { code: "product:inventory:update", description: "Update product inventory" },
   { code: "order:read", description: "View orders" },
+  { code: "order:dashboard:fulfillment:read", description: "View fulfillment oversight dashboard tabs and APIs" },
+  { code: "order:dashboard:escalations:read", description: "View escalation oversight dashboard tabs and APIs" },
   { code: "order:admin", description: "Cancel pre-shipment items as an order admin" },
   { code: "order:processing", description: "Manage the processing manager picking queue" },
   { code: "order:packaging", description: "Manage the packaging manager queue and handovers" },
   { code: "order:shipping", description: "Manage the shipping operator queue and shipments" },
   { code: "order:cancellation", description: "Manage cancellation handovers and stock outcomes" },
-  { code: "order:return", description: "Manage customer return collection and receipt" },
+  { code: "order:return", description: "Manage customer issue and exchange investigations, including extraordinary return handling" },
   { code: "order:override", description: "Override order workflows and route cancellations" },
   { code: "order:cancel", description: "Route manager-triggered cancellations for pre-shipment items" },
   { code: "order:cancel:manage", description: "Receive and validate pre-shipment cancellation items" },
@@ -41,7 +46,14 @@ export const ACTIVE_PERMISSION_CODES = PHASE1_PERMISSION_DEFINITIONS.map((defini
 async function upsertPermission(doc) {
   return Permission.findOneAndUpdate(
     { code: doc.code },
-    { $set: { code: doc.code, description: doc.description, children: doc.children || [] } },
+    {
+      $set: {
+        code: doc.code,
+        description: doc.description,
+        isSystemPermission: true,
+        children: doc.children || [],
+      },
+    },
     { new: true, upsert: true }
   );
 }
