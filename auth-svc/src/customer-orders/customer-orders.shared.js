@@ -565,6 +565,7 @@ export function mapOrder(order, { now = new Date() } = {}) {
       shippedAt: item?.shippedAt || null,
       deliveredAt: item?.deliveredAt || null,
       deliveredBy: item?.deliveredBy ? String(item.deliveredBy) : "",
+      cancelledAt: item?.cancelledAt || null,
       cancellationReceivedAt: item?.cancellationReceivedAt || null,
       cancellationClosedAt: item?.cancellationClosedAt || null,
       pendingHandover: mapHandoverSnapshot(item),

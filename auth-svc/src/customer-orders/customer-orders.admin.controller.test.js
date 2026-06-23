@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildOrdersDashboardExtras,
   buildOrdersDashboardPayload,
+  compareLaneOrders,
   filterFulfillmentDashboardItems,
   laneCompletedMatchesItem,
   laneMatchesItem,
@@ -103,6 +104,39 @@ test("only handed-over cancellation items appear in the cancellation lane", () =
   assert.equal(laneMatchesItem("cancellations", { fulfillmentStatus: "CANCEL_REQUESTED", physicalOwner: "CANCELLATION_MANAGER" }), false);
   assert.equal(laneMatchesItem("cancellations", { fulfillmentStatus: "HANDED_TO_CANCELLATION" }), true);
   assert.equal(laneMatchesItem("cancellations", { fulfillmentStatus: "CANCELLATION_RECEIVED" }), true);
+});
+
+test("before-picking cancellations remain visible in the cancellation lane history", () => {
+  const item = {
+    fulfillmentStatus: "CANCELLED_BEFORE_PICKING",
+    cancelledAt: "2026-05-01T10:00:00.000Z",
+  };
+
+  assert.equal(laneMatchesItem("cancellations", item), true);
+  assert.equal(laneCompletedMatchesItem("cancellations", item), true);
+});
+
+test("lane ordering keeps active work oldest-first and cancellation history newest-first", () => {
+  const activeOlder = {
+    placedAt: "2026-05-01T08:00:00.000Z",
+    items: [{ fulfillmentStatus: "RESERVED", laneAssignedAt: "2026-05-01T08:00:00.000Z" }],
+  };
+  const activeNewer = {
+    placedAt: "2026-05-01T09:00:00.000Z",
+    items: [{ fulfillmentStatus: "RESERVED", laneAssignedAt: "2026-05-01T09:00:00.000Z" }],
+  };
+  const cancelledOlder = {
+    placedAt: "2026-05-01T08:00:00.000Z",
+    items: [{ fulfillmentStatus: "CANCELLED_BEFORE_PICKING", cancelledAt: "2026-05-01T10:00:00.000Z" }],
+  };
+  const cancelledNewer = {
+    placedAt: "2026-05-01T08:00:00.000Z",
+    items: [{ fulfillmentStatus: "CANCELLED_BEFORE_PICKING", cancelledAt: "2026-05-01T11:00:00.000Z" }],
+  };
+
+  assert.equal(compareLaneOrders(activeOlder, activeNewer, "processing") < 0, true);
+  assert.equal(compareLaneOrders(cancelledNewer, cancelledOlder, "cancellations") < 0, true);
+  assert.equal(compareLaneOrders(activeOlder, cancelledNewer, "cancellations") < 0, true);
 });
 
 test("resolveDashboardWindow supports presets and custom ranges", () => {

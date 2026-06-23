@@ -14,6 +14,7 @@ import { requestContextMiddleware } from "../../shared/request-context.js";
 
 const app = express()
 const ENABLE_TLS = String(process.env.ENABLE_TLS || 'false').toLowerCase() === 'true';
+const BIND_HOST = process.env.HOST || '127.0.0.1';
 const corsOrigins = String(process.env.CORS_ORIGINS || "http://localhost:3000,https://localhost:3000,http://localhost:3001,https://localhost:3001")
   .split(",")
   .map((value) => value.trim())
@@ -67,12 +68,12 @@ app.get('/health', (req, res) => {
             const httpsPort = process.env.HTTPS_PORT || process.env.PORT || 4444
             if (ENABLE_TLS) {
                 const creds = getTlsOptions()
-                https.createServer(creds, app).listen(httpsPort, () => {
-                    logger.info(`Catalog Service running on port ${httpsPort} with TLS`)
+                https.createServer(creds, app).listen(httpsPort, BIND_HOST, () => {
+                    logger.info(`Catalog Service running on ${BIND_HOST}:${httpsPort} with TLS`)
                 })
             } else {
-                http.createServer(app).listen(httpsPort, () => {
-                    logger.info(`Catalog Service running on port ${httpsPort} without TLS`)
+                http.createServer(app).listen(httpsPort, BIND_HOST, () => {
+                    logger.info(`Catalog Service running on ${BIND_HOST}:${httpsPort} without TLS`)
                 })
             }
 
@@ -84,7 +85,7 @@ app.get('/health', (req, res) => {
                     const location = `https://${targetHost}${req.url}`
                     res.writeHead(301, { Location: location })
                     res.end()
-                }).listen(httpPort, () => {
+                }).listen(httpPort, BIND_HOST, () => {
                     logger.info(`HTTP redirect server listening on port ${httpPort}`)
                 })
             }

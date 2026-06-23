@@ -63,6 +63,7 @@ type OrderItemDoc = {
   shippingStartedAt?: string | null;
   trackingNumberEnteredAt?: string | null;
   shippedAt?: string | null;
+  cancelledAt?: string | null;
   cancellationReceivedAt?: string | null;
   cancellationClosedAt?: string | null;
   lineGrandTotal?: number;
@@ -273,6 +274,9 @@ function getLaneDescription(lane: Lane, item: OrderItemDoc) {
   }
 
   if (lane === "cancellations") {
+    if (status === "CANCELLED_BEFORE_PICKING") {
+      return "Cancelled before warehouse picking. The inventory reservation was released; review payment status and reference for reconciliation.";
+    }
     if (status === "CANCEL_REQUESTED") return "Pending handover into the cancellation lane.";
     if (status === "HANDED_TO_CANCELLATION") return "Waiting for cancellation receipt confirmation.";
     if (status === "CANCELLATION_RECEIVED") return "Resolve the cancelled item as restocked, damaged, or lost.";
@@ -295,6 +299,7 @@ function getTimeline(item: OrderItemDoc) {
     ["Shipping started", item.shippingStartedAt],
     ["Tracking entered", item.trackingNumberEnteredAt],
     ["Shipped", item.shippedAt],
+    ["Cancelled", item.cancelledAt],
     ["Cancellation received", item.cancellationReceivedAt],
     ["Cancellation closed", item.cancellationClosedAt],
   ].filter(([, value]) => !!value);
@@ -351,11 +356,15 @@ function isLaneProcessedItem(lane: Lane, item: OrderItemDoc) {
   return false;
 }
 
-function sortLaneEntries(entries: LaneTaskEntry[]) {
+function sortLaneEntries(entries: LaneTaskEntry[], { completed = false }: { completed?: boolean } = {}) {
   return entries.sort((left, right) => {
-    const leftTime = new Date(left.item.targetCompletionDate || left.order.placedAt || 0).getTime();
-    const rightTime = new Date(right.item.targetCompletionDate || right.order.placedAt || 0).getTime();
-    return leftTime - rightTime;
+    const leftTime = new Date(
+      (completed ? left.item.lastActionedAt || left.item.cancelledAt : left.item.laneAssignedAt) || left.order.placedAt || 0
+    ).getTime();
+    const rightTime = new Date(
+      (completed ? right.item.lastActionedAt || right.item.cancelledAt : right.item.laneAssignedAt) || right.order.placedAt || 0
+    ).getTime();
+    return completed ? rightTime - leftTime : leftTime - rightTime;
   });
 }
 
@@ -541,7 +550,7 @@ function getLaneTaskBoard(lane: Lane, orders: OrderDoc[]): LaneTaskBoard | null 
           printLabel: ADMIN_UI_STRINGS.orders.processingPrintProcessedList,
           printTitle: ADMIN_UI_STRINGS.orders.processingProcessedListTitle,
           requiresSignature: false,
-          entries: sortLaneEntries(processingProcessed),
+          entries: sortLaneEntries(processingProcessed, { completed: true }),
         },
       ],
       overdueCount,
@@ -592,7 +601,7 @@ function getLaneTaskBoard(lane: Lane, orders: OrderDoc[]): LaneTaskBoard | null 
           printLabel: ADMIN_UI_STRINGS.orders.packagingPrintProcessedList,
           printTitle: ADMIN_UI_STRINGS.orders.packagingProcessedListTitle,
           requiresSignature: false,
-          entries: sortLaneEntries(packagingProcessed),
+          entries: sortLaneEntries(packagingProcessed, { completed: true }),
         },
       ],
       overdueCount,
@@ -625,7 +634,7 @@ function getLaneTaskBoard(lane: Lane, orders: OrderDoc[]): LaneTaskBoard | null 
         printLabel: ADMIN_UI_STRINGS.orders.shippingPrintDispatchList,
         printTitle: ADMIN_UI_STRINGS.orders.shippingDispatchListTitle,
         requiresSignature: true,
-        entries: sortLaneEntries(shippingCompleted),
+          entries: sortLaneEntries(shippingCompleted, { completed: true }),
       },
       {
         key: "shipping_cancellation_requested",
@@ -1403,6 +1412,11 @@ export function OrdersWorkspace({
                     <div className="section-copy">
                       {ADMIN_UI_STRINGS.orders.paymentStatusPrefix}: {paymentLabel(selectedOrder.paymentStatus)}
                     </div>
+                    {selectedOrder.paymentReference ? (
+                      <div className="section-copy">
+                        {ADMIN_UI_STRINGS.orders.paymentReferenceLabel}: {selectedOrder.paymentReference}
+                      </div>
+                    ) : null}
                     <div className="section-copy">
                       {ADMIN_UI_STRINGS.orders.itemsInQueue}: {selectedOrder.items.length}
                     </div>

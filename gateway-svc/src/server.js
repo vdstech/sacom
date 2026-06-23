@@ -11,6 +11,7 @@ import { getTlsOptions } from './tls.js'
 
 const app = express()
 const ENABLE_TLS = String(process.env.ENABLE_TLS || 'false').toLowerCase() === 'true'
+const BIND_HOST = process.env.HOST || '127.0.0.1'
 const allowInsecureUpstreamTls = String(process.env.ALLOW_INSECURE_UPSTREAM_TLS || 'false').toLowerCase() === 'true'
 const corsOrigins = String(process.env.CORS_ORIGINS || "http://localhost:3000,https://localhost:3000,http://localhost:3001,https://localhost:3001")
   .split(",")
@@ -112,12 +113,12 @@ const redirectServer = String(process.env.REDIRECT_SERVER || 'false').toLowerCas
 const httpPort = process.env.HTTP_PORT || 4001
 if (ENABLE_TLS) {
   const tlsOptions = getTlsOptions()
-  https.createServer(tlsOptions, app).listen(port, () => {
-    logger.info(`Gateway Service running on port ${port} with TLS`)
+  https.createServer(tlsOptions, app).listen(port, BIND_HOST, () => {
+    logger.info(`Gateway Service running on ${BIND_HOST}:${port} with TLS`)
   })
 } else {
-  http.createServer(app).listen(port, () => {
-    logger.info(`Gateway Service running on port ${port} without TLS`)
+  http.createServer(app).listen(port, BIND_HOST, () => {
+    logger.info(`Gateway Service running on ${BIND_HOST}:${port} without TLS`)
   })
 }
 
@@ -128,7 +129,7 @@ if (ENABLE_TLS && redirectServer) {
     const location = `https://${targetHost}${req.url}`
     res.writeHead(301, { Location: location })
     res.end()
-  }).listen(httpPort, () => {
+  }).listen(httpPort, BIND_HOST, () => {
     logger.info(`Gateway HTTP redirect server listening on port ${httpPort}`)
   })
 }

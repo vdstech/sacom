@@ -1,0 +1,14 @@
+# Replace example.com before installing this file. Caddy obtains and renews
+# certificates automatically once each DNS record points at this VPS.
+
+store.example.com {
+  reverse_proxy 127.0.0.1:3001
+}
+
+admin.example.com {
+  reverse_proxy 127.0.0.1:3000
+}
+
+api.example.com {
+  reverse_proxy 127.0.0.1:4000
+}

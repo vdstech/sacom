@@ -18,6 +18,8 @@ import {
 import {
   buildOrderItemId,
   CANCELLATION_QUEUE_STATUSES,
+  deriveLaneAssignedAt,
+  deriveLastActionedAt,
   FINAL_CANCELLATION_STATUSES,
   getItemSlaSortPriority,
   getItemHoursInLane,
@@ -142,6 +144,48 @@ function compareDatesAsc(left, right) {
   const leftTime = leftDate ? leftDate.getTime() : Number.MAX_SAFE_INTEGER;
   const rightTime = rightDate ? rightDate.getTime() : Number.MAX_SAFE_INTEGER;
   return leftTime - rightTime;
+}
+
+function dateMilliseconds(value) {
+  const date = asDate(value);
+  return date ? date.getTime() : Number.MAX_SAFE_INTEGER;
+}
+
+function completionTimeForLane(lane, item, orderPlacedAt) {
+  if (lane === "cancellations") {
+    return item?.cancelledAt || item?.cancellationClosedAt || item?.cancelRequestedAt || orderPlacedAt;
+  }
+  if (lane === "shipping") return item?.deliveredAt || item?.shippedAt || orderPlacedAt;
+  if (lane === "packaging") return item?.handedToShippingAt || item?.packedAt || orderPlacedAt;
+  if (lane === "processing") return item?.handedToPackagingAt || item?.pickedAt || orderPlacedAt;
+  return deriveLastActionedAt(item, orderPlacedAt) || orderPlacedAt;
+}
+
+export function compareLaneOrders(left, right, lane) {
+  const leftActiveItems = (left.items || []).filter((item) => !laneCompletedMatchesItem(lane, item));
+  const rightActiveItems = (right.items || []).filter((item) => !laneCompletedMatchesItem(lane, item));
+  const leftIsActive = leftActiveItems.length > 0;
+  const rightIsActive = rightActiveItems.length > 0;
+
+  if (leftIsActive !== rightIsActive) return leftIsActive ? -1 : 1;
+
+  if (leftIsActive) {
+    const leftPriority = Math.min(
+      ...leftActiveItems.map((item) => getItemSlaSortPriority(item, { orderPlacedAt: left.placedAt, activeEscalation: item?.activeEscalation }))
+    );
+    const rightPriority = Math.min(
+      ...rightActiveItems.map((item) => getItemSlaSortPriority(item, { orderPlacedAt: right.placedAt, activeEscalation: item?.activeEscalation }))
+    );
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+
+    const leftTime = Math.min(...leftActiveItems.map((item) => dateMilliseconds(deriveLaneAssignedAt(item, left.placedAt) || left.placedAt)));
+    const rightTime = Math.min(...rightActiveItems.map((item) => dateMilliseconds(deriveLaneAssignedAt(item, right.placedAt) || right.placedAt)));
+    return leftTime - rightTime;
+  }
+
+  const leftCompletionTime = Math.max(...(left.items || []).map((item) => dateMilliseconds(completionTimeForLane(lane, item, left.placedAt))));
+  const rightCompletionTime = Math.max(...(right.items || []).map((item) => dateMilliseconds(completionTimeForLane(lane, item, right.placedAt))));
+  return rightCompletionTime - leftCompletionTime;
 }
 
 function bucketDay(date) {
@@ -745,7 +789,7 @@ export function laneMatchesItem(lane, item) {
   }
 
   if (lane === "cancellations") {
-    return ["HANDED_TO_CANCELLATION", "CANCELLATION_RECEIVED"].includes(status);
+    return ["CANCELLED_BEFORE_PICKING", "HANDED_TO_CANCELLATION", "CANCELLATION_RECEIVED"].includes(status);
   }
 
   return true;
@@ -766,6 +810,10 @@ export function laneCompletedMatchesItem(lane, item) {
 
   if (lane === "shipping") {
     return status === "SHIPPED" || status === "DELIVERED" || !!item?.shippedAt;
+  }
+
+  if (lane === "cancellations") {
+    return FINAL_CANCELLATION_STATUSES.includes(status);
   }
 
   return false;
@@ -892,16 +940,7 @@ async function loadOrdersForLane({ lane = "overview", query = {} }) {
     })
     .filter(Boolean);
 
-  laneFilteredOrders.sort((left, right) => {
-    const leftPriority = Math.min(
-      ...(left.items || []).map((item) => getItemSlaSortPriority(item, { orderPlacedAt: left.placedAt, activeEscalation: item?.activeEscalation }))
-    );
-    const rightPriority = Math.min(
-      ...(right.items || []).map((item) => getItemSlaSortPriority(item, { orderPlacedAt: right.placedAt, activeEscalation: item?.activeEscalation }))
-    );
-    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-    return compareDatesAsc(left.placedAt, right.placedAt);
-  });
+  laneFilteredOrders.sort((left, right) => compareLaneOrders(left, right, lane));
 
   const total = laneFilteredOrders.length;
   const paginated = laneFilteredOrders.slice((page - 1) * limit, page * limit);

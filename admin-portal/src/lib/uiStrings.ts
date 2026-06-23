@@ -403,6 +403,7 @@ export const ADMIN_UI_STRINGS = {
     outboundTrackingRequired: "Enter a tracking number before marking the item as shipped.",
     orderStatusPrefix: "Order Status",
     paymentStatusPrefix: "Payment Status",
+    paymentReferenceLabel: "Payment Reference",
     preShipmentCancellation: "Cancelled Before Shipment",
     customerReturnFlow: "Customer Return",
     inventoryAcceptancePendingCancelHint: "The cancellation manager can now decide whether to restock, mark damaged, or mark lost.",
